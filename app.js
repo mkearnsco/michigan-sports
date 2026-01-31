@@ -1,0 +1,663 @@
+// Michigan Wolverines Sports Schedule App
+// University of Michigan Team IDs: 130 (ESPN)
+
+const CONFIG = {
+    espnBaseUrl: 'https://site.api.espn.com/apis/site/v2/sports',
+    oddsApiBaseUrl: 'https://api.the-odds-api.com/v4/sports',
+    michiganTeamId: '130',
+    sports: {
+        football: {
+            espnPath: 'football/college-football',
+            oddsKey: 'americanfootball_ncaaf',
+            icon: '🏈',
+            label: 'Football'
+        },
+        basketball: {
+            espnPath: 'basketball/mens-college-basketball',
+            oddsKey: 'basketball_ncaab',
+            icon: '🏀',
+            label: 'Basketball'
+        },
+        hockey: {
+            espnPath: 'hockey/mens-college-hockey',
+            oddsKey: null, // College hockey odds often unavailable
+            icon: '🏒',
+            label: 'Hockey'
+        }
+    },
+    mountainTimezone: 'America/Denver',
+    refreshInterval: 15 * 60 * 1000 // 15 minutes
+};
+
+// State
+let state = {
+    currentView: 'today',
+    currentSport: 'all',
+    games: [],
+    odds: {},
+    oddsApiKey: localStorage.getItem('oddsApiKey') || '',
+    lastUpdated: null
+};
+
+// DOM Elements
+const elements = {
+    gamesContainer: document.getElementById('games-container'),
+    currentDate: document.getElementById('current-date'),
+    refreshBtn: document.getElementById('refresh-btn'),
+    lastUpdatedTime: document.getElementById('last-updated-time'),
+    oddsToggle: document.getElementById('odds-toggle'),
+    oddsPanel: document.getElementById('odds-panel'),
+    oddsApiKeyInput: document.getElementById('odds-api-key'),
+    saveApiKeyBtn: document.getElementById('save-api-key'),
+    apiKeyStatus: document.getElementById('api-key-status')
+};
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    initializeTabs();
+    initializeFilters();
+    initializeOddsConfig();
+    initializeRefresh();
+    updateDateHeader();
+    loadData();
+
+    // Auto-refresh
+    setInterval(loadData, CONFIG.refreshInterval);
+});
+
+function initializeTabs() {
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            state.currentView = tab.dataset.view;
+            updateDateHeader();
+            renderGames();
+        });
+    });
+}
+
+function initializeFilters() {
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            state.currentSport = btn.dataset.sport;
+            renderGames();
+        });
+    });
+}
+
+function initializeOddsConfig() {
+    elements.oddsToggle.addEventListener('click', () => {
+        elements.oddsPanel.classList.toggle('hidden');
+    });
+
+    if (state.oddsApiKey) {
+        elements.oddsApiKeyInput.value = '••••••••••••••••';
+        elements.apiKeyStatus.textContent = 'API key saved';
+        elements.apiKeyStatus.className = 'api-key-status success';
+    }
+
+    elements.saveApiKeyBtn.addEventListener('click', saveApiKey);
+}
+
+function initializeRefresh() {
+    elements.refreshBtn.addEventListener('click', () => {
+        loadData();
+    });
+}
+
+async function saveApiKey() {
+    const key = elements.oddsApiKeyInput.value.trim();
+    if (!key || key === '••••••••••••••••') {
+        elements.apiKeyStatus.textContent = 'Please enter a valid API key';
+        elements.apiKeyStatus.className = 'api-key-status error';
+        return;
+    }
+
+    state.oddsApiKey = key;
+    localStorage.setItem('oddsApiKey', key);
+    elements.oddsApiKeyInput.value = '••••••••••••••••';
+    elements.apiKeyStatus.textContent = 'API key saved! Fetching odds...';
+    elements.apiKeyStatus.className = 'api-key-status success';
+
+    await fetchOdds();
+    renderGames();
+}
+
+function updateDateHeader() {
+    const now = new Date();
+    const options = {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        timeZone: CONFIG.mountainTimezone
+    };
+
+    if (state.currentView === 'today') {
+        elements.currentDate.textContent = `Today - ${now.toLocaleDateString('en-US', options)}`;
+    } else {
+        const endDate = new Date(now);
+        endDate.setDate(endDate.getDate() + 7);
+        const startStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: CONFIG.mountainTimezone });
+        const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: CONFIG.mountainTimezone });
+        elements.currentDate.textContent = `This Week (${startStr} - ${endStr})`;
+    }
+}
+
+async function loadData() {
+    showLoading();
+    elements.refreshBtn.classList.add('spinning');
+
+    try {
+        await fetchSchedules();
+        if (state.oddsApiKey) {
+            await fetchOdds();
+        }
+        state.lastUpdated = new Date();
+        updateLastUpdated();
+        renderGames();
+    } catch (error) {
+        console.error('Error loading data:', error);
+        showError('Failed to load schedule. Please try again.');
+    } finally {
+        elements.refreshBtn.classList.remove('spinning');
+    }
+}
+
+async function fetchSchedules() {
+    const promises = Object.entries(CONFIG.sports).map(async ([sport, config]) => {
+        try {
+            const url = `${CONFIG.espnBaseUrl}/${config.espnPath}/teams/${CONFIG.michiganTeamId}/schedule`;
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                console.warn(`Failed to fetch ${sport} schedule`);
+                return [];
+            }
+
+            const data = await response.json();
+            return parseESPNSchedule(data, sport);
+        } catch (error) {
+            console.warn(`Error fetching ${sport} schedule:`, error);
+            return [];
+        }
+    });
+
+    const results = await Promise.all(promises);
+    state.games = results.flat().sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+function parseESPNSchedule(data, sport) {
+    const games = [];
+    const events = data.events || [];
+
+    events.forEach(event => {
+        const competition = event.competitions?.[0];
+        if (!competition) return;
+
+        const michiganTeam = competition.competitors?.find(c => c.id === CONFIG.michiganTeamId);
+        const opponent = competition.competitors?.find(c => c.id !== CONFIG.michiganTeamId);
+
+        if (!michiganTeam || !opponent) return;
+
+        const broadcast = competition.broadcasts?.[0]?.media?.shortName ||
+                         competition.geoBroadcasts?.[0]?.media?.shortName ||
+                         null;
+
+        const game = {
+            id: event.id,
+            sport: sport,
+            date: event.date,
+            name: event.name,
+            shortName: event.shortName,
+            opponent: {
+                name: opponent.team?.displayName || opponent.team?.name || 'TBD',
+                abbreviation: opponent.team?.abbreviation || '',
+                logo: opponent.team?.logo || null
+            },
+            isHome: michiganTeam.homeAway === 'home',
+            venue: competition.venue?.fullName || null,
+            broadcast: broadcast,
+            status: event.status?.type?.name || 'scheduled',
+            completed: event.status?.type?.completed || false,
+            score: null
+        };
+
+        // Add score if game is completed or in progress
+        if (game.completed || game.status === 'in') {
+            game.score = {
+                michigan: michiganTeam.score?.displayValue || '0',
+                opponent: opponent.score?.displayValue || '0',
+                winner: michiganTeam.winner
+            };
+        }
+
+        games.push(game);
+    });
+
+    return games;
+}
+
+async function fetchOdds() {
+    if (!state.oddsApiKey) {
+        console.log('No Odds API key configured');
+        return;
+    }
+
+    console.log('Fetching odds with API key...');
+
+    const sportKeys = Object.values(CONFIG.sports)
+        .filter(s => s.oddsKey)
+        .map(s => s.oddsKey);
+
+    for (const sportKey of sportKeys) {
+        try {
+            const url = `${CONFIG.oddsApiBaseUrl}/${sportKey}/odds/?apiKey=${state.oddsApiKey}&regions=us&markets=spreads,totals&oddsFormat=american`;
+            console.log(`Fetching odds for ${sportKey}...`);
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.warn(`Failed to fetch odds for ${sportKey}:`, response.status, errorText);
+                continue;
+            }
+
+            const data = await response.json();
+            console.log(`Received ${data.length} games for ${sportKey}`);
+            parseOdds(data, sportKey);
+        } catch (error) {
+            console.warn(`Error fetching odds for ${sportKey}:`, error);
+        }
+    }
+
+    console.log('All odds stored:', Object.keys(state.odds));
+}
+
+function parseOdds(data, sportKey) {
+    console.log(`Parsing ${data.length} games from Odds API for ${sportKey}`);
+
+    data.forEach(game => {
+        // Look for Michigan games
+        const isMichiganGame = game.home_team?.toLowerCase().includes('michigan') ||
+                              game.away_team?.toLowerCase().includes('michigan');
+
+        if (!isMichiganGame) return;
+
+        console.log(`Found Michigan game: ${game.home_team} vs ${game.away_team}`);
+
+        const bookmaker = game.bookmakers?.[0];
+        if (!bookmaker) {
+            console.log('No bookmaker data available');
+            return;
+        }
+
+        const spreads = bookmaker.markets?.find(m => m.key === 'spreads');
+        const totals = bookmaker.markets?.find(m => m.key === 'totals');
+
+        const michiganSpread = spreads?.outcomes?.find(o =>
+            o.name?.toLowerCase().includes('michigan')
+        );
+        const totalOver = totals?.outcomes?.find(o => o.name === 'Over');
+
+        const oddsData = {
+            spread: michiganSpread?.point ? `${michiganSpread.point > 0 ? '+' : ''}${michiganSpread.point}` : null,
+            spreadOdds: michiganSpread?.price || null,
+            total: totalOver?.point || null,
+            bookmaker: bookmaker.title
+        };
+
+        // Match to game by opponent name and date
+        const opponent = game.home_team?.toLowerCase().includes('michigan')
+            ? game.away_team
+            : game.home_team;
+
+        // Store with multiple key formats to improve matching
+        const gameDate = new Date(game.commence_time);
+        const dateStr = gameDate.toDateString();
+
+        // Store the raw opponent name
+        const key1 = `${opponent?.toLowerCase()}_${dateStr}`;
+        state.odds[key1] = oddsData;
+
+        // Also store just the date for this sport (fallback matching)
+        const dateOnlyKey = `michigan_${sportKey}_${dateStr}`;
+        state.odds[dateOnlyKey] = { ...oddsData, opponent: opponent };
+
+        console.log(`Stored odds with key: ${key1}`, oddsData);
+    });
+}
+
+function getOddsForGame(game) {
+    const gameDate = new Date(game.date);
+    const dateStr = gameDate.toDateString();
+    const opponentName = game.opponent.name.toLowerCase();
+
+    // Try exact match first
+    const exactKey = `${opponentName}_${dateStr}`;
+    if (state.odds[exactKey]) {
+        return state.odds[exactKey];
+    }
+
+    // Try matching by partial name (e.g., "Ohio State" in "Ohio State Buckeyes")
+    for (const [key, odds] of Object.entries(state.odds)) {
+        if (key.includes(dateStr)) {
+            // Extract the opponent part from the key
+            const keyOpponent = key.replace(`_${dateStr}`, '');
+            // Check if either name contains the other
+            if (opponentName.includes(keyOpponent) || keyOpponent.includes(opponentName.split(' ')[0])) {
+                return odds;
+            }
+        }
+    }
+
+    // Fallback: match by date and sport
+    const sportKey = CONFIG.sports[game.sport]?.oddsKey;
+    if (sportKey) {
+        const fallbackKey = `michigan_${sportKey}_${dateStr}`;
+        if (state.odds[fallbackKey]) {
+            return state.odds[fallbackKey];
+        }
+    }
+
+    return null;
+}
+
+function renderGames() {
+    const filteredGames = filterGames();
+
+    if (filteredGames.length === 0) {
+        showNoGames();
+        return;
+    }
+
+    if (state.currentView === 'today') {
+        renderTodayView(filteredGames);
+    } else {
+        renderWeekView(filteredGames);
+    }
+}
+
+function filterGames() {
+    const now = new Date();
+    const today = new Date(now.toLocaleString('en-US', { timeZone: CONFIG.mountainTimezone }));
+    today.setHours(0, 0, 0, 0);
+
+    const endDate = new Date(today);
+    if (state.currentView === 'week') {
+        endDate.setDate(endDate.getDate() + 7);
+    } else {
+        endDate.setDate(endDate.getDate() + 1);
+    }
+
+    return state.games.filter(game => {
+        // Filter by sport
+        if (state.currentSport !== 'all' && game.sport !== state.currentSport) {
+            return false;
+        }
+
+        // Filter by date
+        const gameDate = new Date(game.date);
+        const gameDateLocal = new Date(gameDate.toLocaleString('en-US', { timeZone: CONFIG.mountainTimezone }));
+        gameDateLocal.setHours(0, 0, 0, 0);
+
+        return gameDateLocal >= today && gameDateLocal < endDate;
+    });
+}
+
+function renderTodayView(games) {
+    const html = `
+        <div class="games-list">
+            ${games.map(game => renderGameCard(game)).join('')}
+        </div>
+    `;
+    elements.gamesContainer.innerHTML = html;
+}
+
+function renderWeekView(games) {
+    // Group games by day
+    const gamesByDay = {};
+    games.forEach(game => {
+        const dateKey = new Date(game.date).toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'short',
+            day: 'numeric',
+            timeZone: CONFIG.mountainTimezone
+        });
+        if (!gamesByDay[dateKey]) {
+            gamesByDay[dateKey] = [];
+        }
+        gamesByDay[dateKey].push(game);
+    });
+
+    const html = Object.entries(gamesByDay).map(([day, dayGames]) => `
+        <div class="day-section">
+            <div class="day-header">${day}</div>
+            <div class="games-list">
+                ${dayGames.map(game => renderGameCard(game)).join('')}
+            </div>
+        </div>
+    `).join('');
+
+    elements.gamesContainer.innerHTML = html;
+}
+
+function getDraftKingsUrl(game) {
+    // DraftKings sport category mapping
+    const dkSportMap = {
+        football: 'football/ncaaf',
+        basketball: 'basketball/ncaab',
+        hockey: 'hockey/ncaah'
+    };
+    const dkSport = dkSportMap[game.sport] || 'football/ncaaf';
+
+    // Build search URL - DraftKings will show Michigan games
+    return `https://sportsbook.draftkings.com/leagues/${dkSport}`;
+}
+
+function getStreamingUrl(broadcast) {
+    if (!broadcast) return null;
+
+    const channel = broadcast.toUpperCase();
+
+    // Streaming services - direct links
+    const streamingLinks = {
+        'ESPN+': 'https://plus.espn.com/',
+        'ESPNPLUS': 'https://plus.espn.com/',
+        'PEACOCK': 'https://www.peacocktv.com/sports',
+        'PARAMOUNT+': 'https://www.paramountplus.com/sports/',
+        'PARAMOUNT PLUS': 'https://www.paramountplus.com/sports/',
+        'BTN+': 'https://www.bigtenplus.com/',
+        'BTN PLUS': 'https://www.bigtenplus.com/',
+        'B1G+': 'https://www.bigtenplus.com/',
+        'AMAZON': 'https://www.amazon.com/primevideo',
+        'PRIME': 'https://www.amazon.com/primevideo',
+        'PRIME VIDEO': 'https://www.amazon.com/primevideo',
+        'APPLE TV': 'https://tv.apple.com/sports',
+        'APPLE TV+': 'https://tv.apple.com/sports',
+    };
+
+    // Check for streaming services first
+    for (const [service, url] of Object.entries(streamingLinks)) {
+        if (channel.includes(service)) {
+            return { url, isStreaming: true };
+        }
+    }
+
+    // Broadcast TV channels - use YouTube TV
+    const broadcastChannels = [
+        'ESPN', 'ESPN2', 'ESPNU', 'ESPNEWS',
+        'FOX', 'FS1', 'FS2',
+        'CBS', 'CBSSN',
+        'NBC', 'NBCSN', 'USA',
+        'BTN', 'BIG TEN NETWORK',
+        'ABC',
+        'TNT', 'TBS', 'TRUTV',
+        'ACCN', 'ACC NETWORK',
+        'SECN', 'SEC NETWORK'
+    ];
+
+    for (const ch of broadcastChannels) {
+        if (channel.includes(ch)) {
+            // YouTube TV live guide
+            return { url: 'https://tv.youtube.com/view/live-guide', isStreaming: false };
+        }
+    }
+
+    return null;
+}
+
+function renderGameCard(game) {
+    const sportConfig = CONFIG.sports[game.sport];
+    const gameTime = formatTime(game.date);
+    const gameDate = formatDate(game.date);
+    const odds = getOddsForGame(game);
+    const draftKingsUrl = getDraftKingsUrl(game);
+    const streamingInfo = getStreamingUrl(game.broadcast);
+
+    const completedClass = game.completed ? 'completed' : '';
+
+    let scoreHtml = '';
+    if (game.score) {
+        const resultClass = game.score.winner ? 'win' : 'loss';
+        const resultText = game.score.winner ? 'W' : 'L';
+        scoreHtml = `
+            <div class="final-score ${resultClass}">
+                ${resultText} ${game.score.michigan}-${game.score.opponent}
+            </div>
+        `;
+    }
+
+    let oddsHtml = '';
+    if (odds && !game.completed) {
+        oddsHtml = `
+            <div class="betting-line">
+                ${odds.spread ? `<span class="odds-item"><span class="label">Spread:</span><span class="value">${odds.spread}</span></span>` : ''}
+                ${odds.total ? `<span class="odds-item"><span class="label">O/U:</span><span class="value">${odds.total}</span></span>` : ''}
+                <a href="${draftKingsUrl}" target="_blank" class="draftkings-btn" title="Bet on DraftKings">
+                    <span class="dk-logo">DK</span> Bet
+                </a>
+            </div>
+        `;
+    } else if (!game.completed) {
+        oddsHtml = `
+            <div class="betting-line">
+                <span class="odds-unavailable">${state.oddsApiKey ? 'Odds not available' : 'Add API key for betting lines'}</span>
+                <a href="${draftKingsUrl}" target="_blank" class="draftkings-btn" title="Bet on DraftKings">
+                    <span class="dk-logo">DK</span> Bet
+                </a>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="game-card ${completedClass}">
+            <div class="sport-badge">
+                <span class="icon">${sportConfig.icon}</span>
+                <span class="label">${sportConfig.label}</span>
+            </div>
+            <div class="game-info">
+                <div class="matchup">
+                    <span class="home-away ${game.isHome ? 'home' : 'away'}">${game.isHome ? 'Home' : 'Away'}</span>
+                    <span class="opponent">${game.isHome ? 'vs' : '@'} ${game.opponent.name}</span>
+                </div>
+                <div class="game-details">
+                    ${game.broadcast ? `
+                        <span class="detail">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+                                <polyline points="17 2 12 7 7 2"></polyline>
+                            </svg>
+                            ${streamingInfo ? `
+                                <a href="${streamingInfo.url}" target="_blank" class="tv-channel tv-link" title="${streamingInfo.isStreaming ? 'Watch on ' + game.broadcast : 'Watch on YouTube TV'}">
+                                    ${game.broadcast} <span class="watch-icon">▶</span>
+                                </a>
+                            ` : `
+                                <span class="tv-channel">${game.broadcast}</span>
+                            `}
+                        </span>
+                    ` : ''}
+                    ${game.venue ? `
+                        <span class="detail">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                <circle cx="12" cy="10" r="3"></circle>
+                            </svg>
+                            ${game.venue}
+                        </span>
+                    ` : ''}
+                </div>
+                ${oddsHtml}
+            </div>
+            <div class="game-right">
+                ${game.completed ? scoreHtml : `
+                    <div class="game-time">${gameTime}</div>
+                    <div class="game-date">${gameDate}</div>
+                `}
+            </div>
+        </div>
+    `;
+}
+
+function formatTime(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: CONFIG.mountainTimezone
+    });
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        timeZone: CONFIG.mountainTimezone
+    });
+}
+
+function showLoading() {
+    elements.gamesContainer.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Loading schedule...</p>
+        </div>
+    `;
+}
+
+function showNoGames() {
+    const sportLabel = state.currentSport === 'all' ? '' : CONFIG.sports[state.currentSport]?.label || '';
+    const timeframe = state.currentView === 'today' ? 'today' : 'this week';
+
+    elements.gamesContainer.innerHTML = `
+        <div class="no-games">
+            <div class="no-games-icon">📅</div>
+            <h3>No ${sportLabel} Games ${timeframe.charAt(0).toUpperCase() + timeframe.slice(1)}</h3>
+            <p>Check back later for upcoming Michigan Wolverines games.</p>
+        </div>
+    `;
+}
+
+function showError(message) {
+    elements.gamesContainer.innerHTML = `
+        <div class="error-message">
+            <p>${message}</p>
+        </div>
+    `;
+}
+
+function updateLastUpdated() {
+    if (state.lastUpdated) {
+        elements.lastUpdatedTime.textContent = state.lastUpdated.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: CONFIG.mountainTimezone
+        }) + ' MT';
+    }
+}

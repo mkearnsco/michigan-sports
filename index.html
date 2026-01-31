@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Michigan Wolverines Sports Schedule</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-section">
+                <div class="michigan-logo">M</div>
+                <div class="header-text">
+                    <h1>Michigan Wolverines</h1>
+                    <p class="subtitle">Sports Schedule</p>
+                </div>
+            </div>
+            <div class="header-controls">
+                <span class="timezone-badge">Mountain Time</span>
+                <button id="refresh-btn" class="refresh-btn" title="Refresh data">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab active" data-view="today">Today</button>
+            <button class="tab" data-view="week">This Week</button>
+        </nav>
+
+        <div class="filters">
+            <button class="filter-btn active" data-sport="all">All Sports</button>
+            <button class="filter-btn" data-sport="football">
+                <span class="sport-icon">🏈</span> Football
+            </button>
+            <button class="filter-btn" data-sport="basketball">
+                <span class="sport-icon">🏀</span> Basketball
+            </button>
+            <button class="filter-btn" data-sport="hockey">
+                <span class="sport-icon">🏒</span> Hockey
+            </button>
+        </div>
+
+        <div class="date-header">
+            <h2 id="current-date"></h2>
+        </div>
+
+        <main id="games-container">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading schedule...</p>
+            </div>
+        </main>
+
+        <div class="odds-config">
+            <button id="odds-toggle" class="odds-toggle-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                Betting Odds Settings
+            </button>
+            <div id="odds-panel" class="odds-panel hidden">
+                <div class="odds-panel-content">
+                    <h3>The Odds API Configuration</h3>
+                    <p class="odds-info">Get a free API key at <a href="https://the-odds-api.com/" target="_blank">the-odds-api.com</a> (500 requests/month free)</p>
+                    <div class="api-key-input">
+                        <input type="password" id="odds-api-key" placeholder="Enter your API key">
+                        <button id="save-api-key" class="save-key-btn">Save</button>
+                    </div>
+                    <p id="api-key-status" class="api-key-status"></p>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Data from ESPN. Odds from The Odds API. Times shown in Mountain Time (MT).</p>
+            <p class="last-updated">Last updated: <span id="last-updated-time">--</span></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
