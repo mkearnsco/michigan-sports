@@ -255,7 +255,7 @@ function updateDateHeader() {
     if (state.currentView === 'today') {
         elements.currentDate.textContent = `Today - ${now.toLocaleDateString('en-US', options)}`;
     } else if (state.currentView === 'season') {
-        elements.currentDate.textContent = 'Upcoming Games';
+        elements.currentDate.textContent = 'Remaining Season';
     } else {
         // Week view with offset
         const startDate = new Date(now);
