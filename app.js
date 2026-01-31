@@ -624,14 +624,14 @@ function filterGames() {
         endDate = new Date(startDate);
         endDate.setDate(endDate.getDate() + 7);
     } else if (state.currentView === 'season') {
-        // Show only future games for season view
+        // Show only future games for season view (today or later)
         return state.games.filter(game => {
             if (state.currentSport !== 'all' && game.sport !== state.currentSport) {
                 return false;
             }
-            // Only include games that haven't been completed
+            // Only include games from today or in the future
             const gameDate = new Date(game.date);
-            return gameDate >= today || !game.completed;
+            return gameDate >= today;
         });
     }
 
