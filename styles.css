@@ -428,35 +428,146 @@ header {
     font-style: italic;
 }
 
+/* Betting Buttons Container */
+.betting-buttons {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
 /* DraftKings Button */
 .draftkings-btn {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
     background: linear-gradient(135deg, #53d337 0%, #3ea828 100%);
     color: #000;
-    padding: 4px 10px;
+    padding: 6px 8px;
     border-radius: 4px;
     font-size: 11px;
     font-weight: 700;
     text-decoration: none;
-    text-transform: uppercase;
     transition: all 0.2s ease;
-    margin-left: auto;
 }
 
 .draftkings-btn:hover {
-    transform: scale(1.05);
+    transform: scale(1.1);
     box-shadow: 0 2px 8px rgba(83, 211, 55, 0.4);
 }
 
 .dk-logo {
     background: #000;
     color: #53d337;
-    padding: 2px 4px;
-    border-radius: 2px;
-    font-size: 10px;
+    padding: 3px 5px;
+    border-radius: 3px;
+    font-size: 11px;
     font-weight: 800;
+}
+
+/* FanDuel Button */
+.fanduel-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #1493ff 0%, #0066cc 100%);
+    color: #fff;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.fanduel-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(20, 147, 255, 0.4);
+}
+
+.fd-logo {
+    background: #fff;
+    color: #1493ff;
+    padding: 3px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+/* Calendar Links */
+.calendar-links {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.calendar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.calendar-btn svg {
+    flex-shrink: 0;
+}
+
+.google-cal {
+    background: rgba(66, 133, 244, 0.15);
+    color: #4285f4;
+    border: 1px solid rgba(66, 133, 244, 0.3);
+}
+
+.google-cal:hover {
+    background: #4285f4;
+    color: #fff;
+}
+
+.outlook-cal {
+    background: rgba(0, 120, 212, 0.15);
+    color: #0078d4;
+    border: 1px solid rgba(0, 120, 212, 0.3);
+}
+
+.outlook-cal:hover {
+    background: #0078d4;
+    color: #fff;
+}
+
+/* Add All to Calendar Button */
+.add-all-calendar {
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.add-all-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, var(--maize) 0%, #e6b800 100%);
+    color: var(--blue);
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.add-all-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 203, 5, 0.4);
+}
+
+.add-all-btn svg {
+    flex-shrink: 0;
 }
 
 /* Completed Game */

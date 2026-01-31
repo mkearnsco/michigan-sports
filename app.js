@@ -444,7 +444,24 @@ function renderWeekView(games) {
         gamesByDay[dateKey].push(game);
     });
 
-    const html = Object.entries(gamesByDay).map(([day, dayGames]) => `
+    const upcomingGames = games.filter(g => !g.completed);
+    const addAllButton = upcomingGames.length > 0 ? `
+        <div class="add-all-calendar">
+            <button onclick="downloadAllGamesToCalendar()" class="add-all-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                    <line x1="12" y1="14" x2="12" y2="18"></line>
+                    <line x1="10" y1="16" x2="14" y2="16"></line>
+                </svg>
+                Add All ${upcomingGames.length} Games to Calendar
+            </button>
+        </div>
+    ` : '';
+
+    const html = addAllButton + Object.entries(gamesByDay).map(([day, dayGames]) => `
         <div class="day-section">
             <div class="day-header">${day}</div>
             <div class="games-list">
@@ -464,9 +481,95 @@ function getDraftKingsUrl(game) {
         hockey: 'hockey/ncaah'
     };
     const dkSport = dkSportMap[game.sport] || 'football/ncaaf';
-
-    // Build search URL - DraftKings will show Michigan games
     return `https://sportsbook.draftkings.com/leagues/${dkSport}`;
+}
+
+function getFanDuelUrl(game) {
+    // FanDuel sport category mapping
+    const fdSportMap = {
+        football: 'college-football',
+        basketball: 'college-basketball',
+        hockey: 'college-hockey'
+    };
+    const fdSport = fdSportMap[game.sport] || 'college-football';
+    return `https://sportsbook.fanduel.com/navigation/${fdSport}`;
+}
+
+function formatDateForCalendar(date) {
+    // Format: YYYYMMDDTHHMMSSZ
+    return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+
+function getGoogleCalendarUrl(game) {
+    const startDate = new Date(game.date);
+    const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000); // Assume 3 hour game
+
+    const title = encodeURIComponent(`Michigan ${CONFIG.sports[game.sport].label}: ${game.isHome ? 'vs' : '@'} ${game.opponent.name}`);
+    const details = encodeURIComponent(`Michigan Wolverines ${CONFIG.sports[game.sport].label}\n${game.isHome ? 'Home' : 'Away'} game\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`);
+    const location = encodeURIComponent(game.venue || '');
+
+    const start = formatDateForCalendar(startDate);
+    const end = formatDateForCalendar(endDate);
+
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}`;
+}
+
+function getOutlookCalendarUrl(game) {
+    const startDate = new Date(game.date);
+    const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000); // Assume 3 hour game
+
+    const title = encodeURIComponent(`Michigan ${CONFIG.sports[game.sport].label}: ${game.isHome ? 'vs' : '@'} ${game.opponent.name}`);
+    const details = encodeURIComponent(`Michigan Wolverines ${CONFIG.sports[game.sport].label}\n${game.isHome ? 'Home' : 'Away'} game\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`);
+    const location = encodeURIComponent(game.venue || '');
+
+    const start = startDate.toISOString();
+    const end = endDate.toISOString();
+
+    return `https://outlook.live.com/calendar/0/deeplink/compose?subject=${title}&startdt=${start}&enddt=${end}&body=${details}&location=${location}`;
+}
+
+function generateICSFile(games) {
+    const events = games.map(game => {
+        const startDate = new Date(game.date);
+        const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000);
+
+        const title = `Michigan ${CONFIG.sports[game.sport].label}: ${game.isHome ? 'vs' : '@'} ${game.opponent.name}`;
+        const description = `Michigan Wolverines ${CONFIG.sports[game.sport].label}\\n${game.isHome ? 'Home' : 'Away'} game\\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`;
+
+        return `BEGIN:VEVENT
+DTSTART:${formatDateForCalendar(startDate)}
+DTEND:${formatDateForCalendar(endDate)}
+SUMMARY:${title}
+DESCRIPTION:${description}
+LOCATION:${game.venue || ''}
+END:VEVENT`;
+    }).join('\n');
+
+    return `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Michigan Sports Schedule//EN
+${events}
+END:VCALENDAR`;
+}
+
+function downloadAllGamesToCalendar() {
+    const filteredGames = filterGames().filter(g => !g.completed);
+    if (filteredGames.length === 0) {
+        alert('No upcoming games to add to calendar.');
+        return;
+    }
+
+    const icsContent = generateICSFile(filteredGames);
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'michigan-wolverines-games.ics';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 }
 
 function getStreamingUrl(broadcast) {
@@ -527,6 +630,9 @@ function renderGameCard(game) {
     const gameDate = formatDate(game.date);
     const odds = getOddsForGame(game);
     const draftKingsUrl = getDraftKingsUrl(game);
+    const fanDuelUrl = getFanDuelUrl(game);
+    const googleCalUrl = getGoogleCalendarUrl(game);
+    const outlookCalUrl = getOutlookCalendarUrl(game);
     const streamingInfo = getStreamingUrl(game.broadcast);
 
     const completedClass = game.completed ? 'completed' : '';
@@ -542,23 +648,49 @@ function renderGameCard(game) {
         `;
     }
 
-    let oddsHtml = '';
-    if (odds && !game.completed) {
-        oddsHtml = `
+    let bettingHtml = '';
+    if (!game.completed) {
+        bettingHtml = `
             <div class="betting-line">
-                ${odds.spread ? `<span class="odds-item"><span class="label">Spread:</span><span class="value">${odds.spread}</span></span>` : ''}
-                ${odds.total ? `<span class="odds-item"><span class="label">O/U:</span><span class="value">${odds.total}</span></span>` : ''}
-                <a href="${draftKingsUrl}" target="_blank" class="draftkings-btn" title="Bet on DraftKings">
-                    <span class="dk-logo">DK</span> Bet
-                </a>
+                ${odds ? `
+                    ${odds.spread ? `<span class="odds-item"><span class="label">Spread:</span><span class="value">${odds.spread}</span></span>` : ''}
+                    ${odds.total ? `<span class="odds-item"><span class="label">O/U:</span><span class="value">${odds.total}</span></span>` : ''}
+                ` : `
+                    <span class="odds-unavailable">${state.oddsApiKey ? 'Odds not available' : 'Add API key for betting lines'}</span>
+                `}
+                <div class="betting-buttons">
+                    <a href="${draftKingsUrl}" target="_blank" class="draftkings-btn" title="Bet on DraftKings">
+                        <span class="dk-logo">DK</span>
+                    </a>
+                    <a href="${fanDuelUrl}" target="_blank" class="fanduel-btn" title="Bet on FanDuel">
+                        <span class="fd-logo">FD</span>
+                    </a>
+                </div>
             </div>
         `;
-    } else if (!game.completed) {
-        oddsHtml = `
-            <div class="betting-line">
-                <span class="odds-unavailable">${state.oddsApiKey ? 'Odds not available' : 'Add API key for betting lines'}</span>
-                <a href="${draftKingsUrl}" target="_blank" class="draftkings-btn" title="Bet on DraftKings">
-                    <span class="dk-logo">DK</span> Bet
+    }
+
+    let calendarHtml = '';
+    if (!game.completed) {
+        calendarHtml = `
+            <div class="calendar-links">
+                <a href="${googleCalUrl}" target="_blank" class="calendar-btn google-cal" title="Add to Google Calendar">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    Google
+                </a>
+                <a href="${outlookCalUrl}" target="_blank" class="calendar-btn outlook-cal" title="Add to Outlook Calendar">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    Outlook
                 </a>
             </div>
         `;
@@ -601,7 +733,8 @@ function renderGameCard(game) {
                         </span>
                     ` : ''}
                 </div>
-                ${oddsHtml}
+                ${bettingHtml}
+                ${calendarHtml}
             </div>
             <div class="game-right">
                 ${game.completed ? scoreHtml : `
