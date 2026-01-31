@@ -136,6 +136,74 @@ function initializeOddsConfig() {
     }
 
     elements.saveApiKeyBtn.addEventListener('click', saveApiKey);
+
+    // Test API button
+    const testBtn = document.getElementById('test-odds-api');
+    if (testBtn) {
+        testBtn.addEventListener('click', testOddsApi);
+    }
+}
+
+async function testOddsApi() {
+    const debugOutput = document.getElementById('api-debug-output');
+    debugOutput.style.display = 'block';
+    debugOutput.textContent = 'Testing API...';
+
+    if (!state.oddsApiKey) {
+        debugOutput.textContent = 'ERROR: No API key saved. Please enter and save your API key first.';
+        return;
+    }
+
+    try {
+        const url = `${CONFIG.oddsApiBaseUrl}/basketball_ncaab/odds/?apiKey=${state.oddsApiKey}&regions=us&markets=spreads,totals&oddsFormat=american`;
+        debugOutput.textContent = `Fetching: ${url.replace(state.oddsApiKey, 'API_KEY_HIDDEN')}\n\n`;
+
+        const response = await fetch(url);
+        const responseText = await response.text();
+
+        if (!response.ok) {
+            debugOutput.textContent += `ERROR ${response.status}: ${responseText}`;
+            return;
+        }
+
+        const data = JSON.parse(responseText);
+        debugOutput.textContent += `Total games returned: ${data.length}\n\n`;
+
+        // Find Michigan games
+        const michiganGames = data.filter(g => {
+            const home = g.home_team?.toLowerCase() || '';
+            const away = g.away_team?.toLowerCase() || '';
+            return home.includes('michigan') || away.includes('michigan') ||
+                   home.includes('wolverine') || away.includes('wolverine');
+        });
+
+        debugOutput.textContent += `Michigan games found: ${michiganGames.length}\n\n`;
+
+        if (michiganGames.length > 0) {
+            debugOutput.textContent += `MICHIGAN GAMES:\n`;
+            michiganGames.forEach(g => {
+                debugOutput.textContent += `- ${g.home_team} vs ${g.away_team}\n`;
+                debugOutput.textContent += `  Date: ${g.commence_time}\n`;
+                debugOutput.textContent += `  Bookmakers: ${g.bookmakers?.length || 0}\n\n`;
+            });
+        } else {
+            debugOutput.textContent += `No Michigan games in API response.\n\n`;
+            debugOutput.textContent += `First 5 games in response:\n`;
+            data.slice(0, 5).forEach(g => {
+                debugOutput.textContent += `- ${g.home_team} vs ${g.away_team} (${g.commence_time})\n`;
+            });
+        }
+
+        // Show remaining API calls
+        const remaining = response.headers.get('x-requests-remaining');
+        const used = response.headers.get('x-requests-used');
+        if (remaining || used) {
+            debugOutput.textContent += `\nAPI Usage: ${used || '?'} used, ${remaining || '?'} remaining`;
+        }
+
+    } catch (error) {
+        debugOutput.textContent += `\nFetch Error: ${error.message}`;
+    }
 }
 
 function initializeRefresh() {
@@ -342,8 +410,15 @@ async function fetchOdds() {
             // Log all games to see what's available
             console.log(`All ${sportKey} games from Odds API:`);
             data.forEach(g => {
-                console.log(`  - ${g.home_team} vs ${g.away_team} on ${g.commence_time}`);
+                const home = g.home_team?.toLowerCase() || '';
+                const away = g.away_team?.toLowerCase() || '';
+                const hasMichigan = home.includes('michigan') || away.includes('michigan') ||
+                                   home.includes('wolverine') || away.includes('wolverine');
+                if (hasMichigan) {
+                    console.log(`  *** MICHIGAN GAME: ${g.home_team} vs ${g.away_team} on ${g.commence_time}`);
+                }
             });
+            console.log(`Total games returned: ${data.length}`);
 
             parseOdds(data, sportKey);
         } catch (error) {
@@ -362,11 +437,19 @@ function parseOdds(data, sportKey) {
         const awayTeam = game.away_team?.toLowerCase() || '';
 
         // Check for University of Michigan specifically (not Michigan State)
-        // The Odds API typically uses "Michigan Wolverines" for UMich
-        const isMichiganHome = (homeTeam.includes('michigan') && !homeTeam.includes('michigan state') && !homeTeam.includes('state'));
-        const isMichiganAway = (awayTeam.includes('michigan') && !awayTeam.includes('michigan state') && !awayTeam.includes('state'));
+        // The Odds API uses "Michigan Wolverines" for UMich
+        // We need to match "michigan" but NOT "michigan state"
+        const isMichiganHome = homeTeam.includes('michigan') && !homeTeam.includes('michigan state');
+        const isMichiganAway = awayTeam.includes('michigan') && !awayTeam.includes('michigan state');
 
-        if (!isMichiganHome && !isMichiganAway) return;
+        // Alternative check: look for "wolverines" specifically
+        const isWolverinesHome = homeTeam.includes('wolverines');
+        const isWolverinesAway = awayTeam.includes('wolverines');
+
+        const foundMichiganHome = isMichiganHome || isWolverinesHome;
+        const foundMichiganAway = isMichiganAway || isWolverinesAway;
+
+        if (!foundMichiganHome && !foundMichiganAway) return;
 
         console.log(`Found Michigan game: ${game.home_team} vs ${game.away_team}, commence_time: ${game.commence_time}`);
 
@@ -394,7 +477,7 @@ function parseOdds(data, sportKey) {
         };
 
         // Determine the opponent
-        const opponent = isMichiganHome ? game.away_team : game.home_team;
+        const opponent = foundMichiganHome ? game.away_team : game.home_team;
 
         // Store with multiple key formats to improve matching
         // Use UTC date string for consistency (YYYY-MM-DD format)
@@ -848,7 +931,7 @@ function renderGameCard(game) {
         const daysUntilGame = Math.ceil((gameDate - now) / (1000 * 60 * 60 * 24));
         let oddsMessage = 'Add API key for betting lines';
         if (state.oddsApiKey) {
-            if (daysUntilGame > 7) {
+            if (daysUntilGame > 3) {
                 oddsMessage = 'Odds available closer to game day';
             } else {
                 oddsMessage = 'Odds not available';
