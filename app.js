@@ -187,7 +187,7 @@ function updateDateHeader() {
     if (state.currentView === 'today') {
         elements.currentDate.textContent = `Today - ${now.toLocaleDateString('en-US', options)}`;
     } else if (state.currentView === 'season') {
-        elements.currentDate.textContent = 'Full Season Schedule';
+        elements.currentDate.textContent = 'Upcoming Games';
     } else {
         // Week view with offset
         const startDate = new Date(now);
@@ -351,11 +351,15 @@ function parseOdds(data, sportKey) {
     console.log(`Parsing ${data.length} games from Odds API for ${sportKey}`);
 
     data.forEach(game => {
-        // Look for Michigan games
-        const isMichiganGame = game.home_team?.toLowerCase().includes('michigan') ||
-                              game.away_team?.toLowerCase().includes('michigan');
+        const homeTeam = game.home_team?.toLowerCase() || '';
+        const awayTeam = game.away_team?.toLowerCase() || '';
 
-        if (!isMichiganGame) return;
+        // Check for University of Michigan specifically (not Michigan State)
+        // The Odds API typically uses "Michigan Wolverines" for UMich
+        const isMichiganHome = (homeTeam.includes('michigan') && !homeTeam.includes('michigan state') && !homeTeam.includes('state'));
+        const isMichiganAway = (awayTeam.includes('michigan') && !awayTeam.includes('michigan state') && !awayTeam.includes('state'));
+
+        if (!isMichiganHome && !isMichiganAway) return;
 
         console.log(`Found Michigan game: ${game.home_team} vs ${game.away_team}`);
 
@@ -368,28 +372,28 @@ function parseOdds(data, sportKey) {
         const spreads = bookmaker.markets?.find(m => m.key === 'spreads');
         const totals = bookmaker.markets?.find(m => m.key === 'totals');
 
-        const michiganSpread = spreads?.outcomes?.find(o =>
-            o.name?.toLowerCase().includes('michigan')
-        );
+        // Find Michigan's spread - match "Michigan" but not "Michigan State"
+        const michiganSpread = spreads?.outcomes?.find(o => {
+            const name = o.name?.toLowerCase() || '';
+            return name.includes('michigan') && !name.includes('michigan state') && !name.includes('state');
+        });
         const totalOver = totals?.outcomes?.find(o => o.name === 'Over');
 
         const oddsData = {
-            spread: michiganSpread?.point ? `${michiganSpread.point > 0 ? '+' : ''}${michiganSpread.point}` : null,
+            spread: michiganSpread?.point !== undefined ? `${michiganSpread.point > 0 ? '+' : ''}${michiganSpread.point}` : null,
             spreadOdds: michiganSpread?.price || null,
             total: totalOver?.point || null,
             bookmaker: bookmaker.title
         };
 
-        // Match to game by opponent name and date
-        const opponent = game.home_team?.toLowerCase().includes('michigan')
-            ? game.away_team
-            : game.home_team;
+        // Determine the opponent
+        const opponent = isMichiganHome ? game.away_team : game.home_team;
 
         // Store with multiple key formats to improve matching
         const gameDate = new Date(game.commence_time);
         const dateStr = gameDate.toDateString();
 
-        // Store the raw opponent name
+        // Store the raw opponent name (lowercase)
         const key1 = `${opponent?.toLowerCase()}_${dateStr}`;
         state.odds[key1] = oddsData;
 
@@ -398,6 +402,7 @@ function parseOdds(data, sportKey) {
         state.odds[dateOnlyKey] = { ...oddsData, opponent: opponent };
 
         console.log(`Stored odds with key: ${key1}`, oddsData);
+        console.log(`Odds data:`, oddsData);
     });
 }
 
@@ -406,33 +411,60 @@ function getOddsForGame(game) {
     const dateStr = gameDate.toDateString();
     const opponentName = game.opponent.name.toLowerCase();
 
+    console.log(`Looking for odds: opponent="${opponentName}", date="${dateStr}"`);
+    console.log(`Available odds keys:`, Object.keys(state.odds));
+
     // Try exact match first
     const exactKey = `${opponentName}_${dateStr}`;
     if (state.odds[exactKey]) {
+        console.log(`Found exact match: ${exactKey}`);
         return state.odds[exactKey];
     }
 
-    // Try matching by partial name (e.g., "Ohio State" in "Ohio State Buckeyes")
+    // Try matching by partial name (team names differ between ESPN and Odds API)
+    // ESPN: "Ohio State Buckeyes", Odds API: "Ohio State"
     for (const [key, odds] of Object.entries(state.odds)) {
-        if (key.includes(dateStr)) {
-            // Extract the opponent part from the key
-            const keyOpponent = key.replace(`_${dateStr}`, '');
-            // Check if either name contains the other
-            if (opponentName.includes(keyOpponent) || keyOpponent.includes(opponentName.split(' ')[0])) {
-                return odds;
-            }
+        if (!key.includes(dateStr)) continue;
+        if (key.startsWith('michigan_')) continue; // Skip fallback keys for now
+
+        // Extract the opponent part from the key
+        const keyOpponent = key.replace(`_${dateStr}`, '');
+
+        // Check various matching patterns
+        const opponentWords = opponentName.split(' ').filter(w => w.length > 2);
+        const keyWords = keyOpponent.split(' ').filter(w => w.length > 2);
+
+        // Check if key opponent is contained in ESPN opponent name
+        if (opponentName.includes(keyOpponent)) {
+            console.log(`Found partial match (key in name): ${key}`);
+            return odds;
+        }
+
+        // Check if first significant word matches
+        if (opponentWords[0] && keyWords[0] && opponentWords[0] === keyWords[0]) {
+            console.log(`Found word match: ${key}`);
+            return odds;
+        }
+
+        // Check if any significant words match
+        const matchingWords = opponentWords.filter(w => keyWords.includes(w));
+        if (matchingWords.length > 0) {
+            console.log(`Found word overlap match: ${key} (matching: ${matchingWords.join(', ')})`);
+            return odds;
         }
     }
 
-    // Fallback: match by date and sport
+    // Fallback: match by date and sport only
     const sportKey = CONFIG.sports[game.sport]?.oddsKey;
     if (sportKey) {
         const fallbackKey = `michigan_${sportKey}_${dateStr}`;
         if (state.odds[fallbackKey]) {
+            console.log(`Using fallback key: ${fallbackKey}`);
             return state.odds[fallbackKey];
         }
     }
 
+    console.log(`No odds found for ${opponentName} on ${dateStr}`);
     return null;
 }
 
@@ -469,12 +501,14 @@ function filterGames() {
         endDate = new Date(startDate);
         endDate.setDate(endDate.getDate() + 7);
     } else if (state.currentView === 'season') {
-        // Show all games (no date filter for season view)
+        // Show only future games for season view
         return state.games.filter(game => {
             if (state.currentSport !== 'all' && game.sport !== state.currentSport) {
                 return false;
             }
-            return true;
+            // Only include games that haven't been completed
+            const gameDate = new Date(game.date);
+            return gameDate >= today || !game.completed;
         });
     }
 
