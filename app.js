@@ -338,6 +338,13 @@ async function fetchOdds() {
 
             const data = await response.json();
             console.log(`Received ${data.length} games for ${sportKey}`);
+
+            // Log all games to see what's available
+            console.log(`All ${sportKey} games from Odds API:`);
+            data.forEach(g => {
+                console.log(`  - ${g.home_team} vs ${g.away_team} on ${g.commence_time}`);
+            });
+
             parseOdds(data, sportKey);
         } catch (error) {
             console.warn(`Error fetching odds for ${sportKey}:`, error);
@@ -835,13 +842,26 @@ function renderGameCard(game) {
 
     let bettingHtml = '';
     if (!game.completed) {
+        // Determine why odds might not be available
+        const gameDate = new Date(game.date);
+        const now = new Date();
+        const daysUntilGame = Math.ceil((gameDate - now) / (1000 * 60 * 60 * 24));
+        let oddsMessage = 'Add API key for betting lines';
+        if (state.oddsApiKey) {
+            if (daysUntilGame > 7) {
+                oddsMessage = 'Odds available closer to game day';
+            } else {
+                oddsMessage = 'Odds not available';
+            }
+        }
+
         bettingHtml = `
             <div class="betting-line">
                 ${odds ? `
                     ${odds.spread ? `<span class="odds-item"><span class="label">Spread:</span><span class="value">${odds.spread}</span></span>` : ''}
                     ${odds.total ? `<span class="odds-item"><span class="label">O/U:</span><span class="value">${odds.total}</span></span>` : ''}
                 ` : `
-                    <span class="odds-unavailable">${state.oddsApiKey ? 'Odds not available' : 'Add API key for betting lines'}</span>
+                    <span class="odds-unavailable">${oddsMessage}</span>
                 `}
                 <div class="betting-buttons">
                     <a href="${draftKingsUrl}" target="_blank" class="draftkings-btn" title="Bet on DraftKings">
