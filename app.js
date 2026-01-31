@@ -122,7 +122,19 @@ async function saveApiKey() {
     elements.apiKeyStatus.textContent = 'API key saved! Fetching odds...';
     elements.apiKeyStatus.className = 'api-key-status success';
 
-    await fetchOdds();
+    try {
+        await fetchOdds();
+        const oddsCount = Object.keys(state.odds).length;
+        if (oddsCount > 0) {
+            elements.apiKeyStatus.textContent = `API key saved! Found odds for ${Math.floor(oddsCount / 2)} game(s).`;
+        } else {
+            elements.apiKeyStatus.textContent = 'API key saved! No Michigan odds available right now.';
+        }
+        elements.apiKeyStatus.className = 'api-key-status success';
+    } catch (error) {
+        elements.apiKeyStatus.textContent = 'API key saved but failed to fetch odds. Check console for errors.';
+        elements.apiKeyStatus.className = 'api-key-status error';
+    }
     renderGames();
 }
 
