@@ -33,6 +33,7 @@ const CONFIG = {
 let state = {
     currentView: 'today',
     currentSport: 'all',
+    weekOffset: 0, // 0 = current week, 1 = next week, -1 = last week, etc.
     games: [],
     odds: {},
     oddsApiKey: localStorage.getItem('oddsApiKey') || '',
@@ -49,13 +50,18 @@ const elements = {
     oddsPanel: document.getElementById('odds-panel'),
     oddsApiKeyInput: document.getElementById('odds-api-key'),
     saveApiKeyBtn: document.getElementById('save-api-key'),
-    apiKeyStatus: document.getElementById('api-key-status')
+    apiKeyStatus: document.getElementById('api-key-status'),
+    weekNav: document.getElementById('week-nav'),
+    prevWeekBtn: document.getElementById('prev-week'),
+    nextWeekBtn: document.getElementById('next-week'),
+    todayBtn: document.getElementById('today-btn')
 };
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     initializeTabs();
     initializeFilters();
+    initializeWeekNav();
     initializeOddsConfig();
     initializeRefresh();
     updateDateHeader();
@@ -71,10 +77,40 @@ function initializeTabs() {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             state.currentView = tab.dataset.view;
+            state.weekOffset = 0; // Reset to current week when switching views
+            updateWeekNavVisibility();
             updateDateHeader();
             renderGames();
         });
     });
+}
+
+function initializeWeekNav() {
+    elements.prevWeekBtn.addEventListener('click', () => {
+        state.weekOffset--;
+        updateDateHeader();
+        renderGames();
+    });
+
+    elements.nextWeekBtn.addEventListener('click', () => {
+        state.weekOffset++;
+        updateDateHeader();
+        renderGames();
+    });
+
+    elements.todayBtn.addEventListener('click', () => {
+        state.weekOffset = 0;
+        updateDateHeader();
+        renderGames();
+    });
+}
+
+function updateWeekNavVisibility() {
+    if (state.currentView === 'week') {
+        elements.weekNav.classList.remove('hidden');
+    } else {
+        elements.weekNav.classList.add('hidden');
+    }
 }
 
 function initializeFilters() {
@@ -150,13 +186,36 @@ function updateDateHeader() {
 
     if (state.currentView === 'today') {
         elements.currentDate.textContent = `Today - ${now.toLocaleDateString('en-US', options)}`;
+    } else if (state.currentView === 'season') {
+        elements.currentDate.textContent = 'Full Season Schedule';
     } else {
-        const endDate = new Date(now);
-        endDate.setDate(endDate.getDate() + 7);
-        const startStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: CONFIG.mountainTimezone });
+        // Week view with offset
+        const startDate = new Date(now);
+        startDate.setDate(startDate.getDate() + (state.weekOffset * 7));
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 6);
+
+        const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: CONFIG.mountainTimezone });
         const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: CONFIG.mountainTimezone });
-        elements.currentDate.textContent = `This Week (${startStr} - ${endStr})`;
+
+        let weekLabel = '';
+        if (state.weekOffset === 0) {
+            weekLabel = 'This Week';
+        } else if (state.weekOffset === 1) {
+            weekLabel = 'Next Week';
+        } else if (state.weekOffset === -1) {
+            weekLabel = 'Last Week';
+        } else if (state.weekOffset > 0) {
+            weekLabel = `${state.weekOffset} Weeks Ahead`;
+        } else {
+            weekLabel = `${Math.abs(state.weekOffset)} Weeks Ago`;
+        }
+
+        elements.currentDate.textContent = `${weekLabel} (${startStr} - ${endStr})`;
     }
+
+    // Update week nav visibility
+    updateWeekNavVisibility();
 }
 
 async function loadData() {
@@ -387,6 +446,8 @@ function renderGames() {
 
     if (state.currentView === 'today') {
         renderTodayView(filteredGames);
+    } else if (state.currentView === 'season') {
+        renderSeasonView(filteredGames);
     } else {
         renderWeekView(filteredGames);
     }
@@ -397,11 +458,24 @@ function filterGames() {
     const today = new Date(now.toLocaleString('en-US', { timeZone: CONFIG.mountainTimezone }));
     today.setHours(0, 0, 0, 0);
 
-    const endDate = new Date(today);
-    if (state.currentView === 'week') {
-        endDate.setDate(endDate.getDate() + 7);
-    } else {
+    let startDate = new Date(today);
+    let endDate = new Date(today);
+
+    if (state.currentView === 'today') {
         endDate.setDate(endDate.getDate() + 1);
+    } else if (state.currentView === 'week') {
+        // Apply week offset
+        startDate.setDate(startDate.getDate() + (state.weekOffset * 7));
+        endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 7);
+    } else if (state.currentView === 'season') {
+        // Show all games (no date filter for season view)
+        return state.games.filter(game => {
+            if (state.currentSport !== 'all' && game.sport !== state.currentSport) {
+                return false;
+            }
+            return true;
+        });
     }
 
     return state.games.filter(game => {
@@ -415,7 +489,7 @@ function filterGames() {
         const gameDateLocal = new Date(gameDate.toLocaleString('en-US', { timeZone: CONFIG.mountainTimezone }));
         gameDateLocal.setHours(0, 0, 0, 0);
 
-        return gameDateLocal >= today && gameDateLocal < endDate;
+        return gameDateLocal >= startDate && gameDateLocal < endDate;
     });
 }
 
@@ -466,6 +540,50 @@ function renderWeekView(games) {
             <div class="day-header">${day}</div>
             <div class="games-list">
                 ${dayGames.map(game => renderGameCard(game)).join('')}
+            </div>
+        </div>
+    `).join('');
+
+    elements.gamesContainer.innerHTML = html;
+}
+
+function renderSeasonView(games) {
+    // Group games by month
+    const gamesByMonth = {};
+    games.forEach(game => {
+        const monthKey = new Date(game.date).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            timeZone: CONFIG.mountainTimezone
+        });
+        if (!gamesByMonth[monthKey]) {
+            gamesByMonth[monthKey] = [];
+        }
+        gamesByMonth[monthKey].push(game);
+    });
+
+    const upcomingGames = games.filter(g => !g.completed);
+    const addAllButton = upcomingGames.length > 0 ? `
+        <div class="add-all-calendar">
+            <button onclick="downloadAllGamesToCalendar()" class="add-all-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                    <line x1="12" y1="14" x2="12" y2="18"></line>
+                    <line x1="10" y1="16" x2="14" y2="16"></line>
+                </svg>
+                Add All ${upcomingGames.length} Upcoming Games to Calendar
+            </button>
+        </div>
+    ` : '';
+
+    const html = addAllButton + Object.entries(gamesByMonth).map(([month, monthGames]) => `
+        <div class="month-section">
+            <div class="month-header">${month}</div>
+            <div class="games-list">
+                ${monthGames.map(game => renderGameCard(game)).join('')}
             </div>
         </div>
     `).join('');

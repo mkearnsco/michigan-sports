@@ -32,7 +32,24 @@
         <nav class="tabs">
             <button class="tab active" data-view="today">Today</button>
             <button class="tab" data-view="week">This Week</button>
+            <button class="tab" data-view="season">Full Season</button>
         </nav>
+
+        <div id="week-nav" class="week-nav hidden">
+            <button id="prev-week" class="week-nav-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                Previous
+            </button>
+            <button id="today-btn" class="today-btn">Today</button>
+            <button id="next-week" class="week-nav-btn">
+                Next
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+            </button>
+        </div>
 
         <div class="filters">
             <button class="filter-btn active" data-sport="all">All Sports</button>

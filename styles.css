@@ -145,6 +145,61 @@ header {
     color: var(--blue);
 }
 
+/* Week Navigation */
+.week-nav {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.week-nav.hidden {
+    display: none;
+}
+
+.week-nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: transparent;
+    border: 1px solid var(--light-blue);
+    color: var(--gray-300);
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.week-nav-btn:hover {
+    border-color: var(--maize);
+    color: var(--maize);
+}
+
+.week-nav-btn svg {
+    flex-shrink: 0;
+}
+
+.today-btn {
+    padding: 8px 16px;
+    background: var(--light-blue);
+    border: 1px solid var(--light-blue);
+    color: var(--white);
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.today-btn:hover {
+    background: var(--maize);
+    border-color: var(--maize);
+    color: var(--blue);
+}
+
 /* Filters */
 .filters {
     display: flex;
@@ -259,6 +314,22 @@ header {
     margin-bottom: 12px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--light-blue);
+}
+
+/* Month sections for season view */
+.month-section {
+    margin-bottom: 30px;
+}
+
+.month-header {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--maize);
+    margin-bottom: 15px;
+    padding: 10px 15px;
+    background: var(--light-blue);
+    border-radius: 8px;
+    border-left: 4px solid var(--maize);
 }
 
 .game-card {
