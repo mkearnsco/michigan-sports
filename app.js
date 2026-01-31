@@ -361,7 +361,7 @@ function parseOdds(data, sportKey) {
 
         if (!isMichiganHome && !isMichiganAway) return;
 
-        console.log(`Found Michigan game: ${game.home_team} vs ${game.away_team}`);
+        console.log(`Found Michigan game: ${game.home_team} vs ${game.away_team}, commence_time: ${game.commence_time}`);
 
         const bookmaker = game.bookmakers?.[0];
         if (!bookmaker) {
@@ -390,45 +390,67 @@ function parseOdds(data, sportKey) {
         const opponent = isMichiganHome ? game.away_team : game.home_team;
 
         // Store with multiple key formats to improve matching
+        // Use UTC date string for consistency (YYYY-MM-DD format)
         const gameDate = new Date(game.commence_time);
-        const dateStr = gameDate.toDateString();
+        const utcDateStr = gameDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const localDateStr = gameDate.toDateString(); // Also keep local for fallback
 
-        // Store the raw opponent name (lowercase)
-        const key1 = `${opponent?.toLowerCase()}_${dateStr}`;
+        // Store the raw opponent name (lowercase) with both date formats
+        const key1 = `${opponent?.toLowerCase()}_${utcDateStr}`;
+        const key2 = `${opponent?.toLowerCase()}_${localDateStr}`;
         state.odds[key1] = oddsData;
+        state.odds[key2] = oddsData;
 
         // Also store just the date for this sport (fallback matching)
-        const dateOnlyKey = `michigan_${sportKey}_${dateStr}`;
+        const dateOnlyKey = `michigan_${sportKey}_${utcDateStr}`;
+        const dateOnlyKey2 = `michigan_${sportKey}_${localDateStr}`;
         state.odds[dateOnlyKey] = { ...oddsData, opponent: opponent };
+        state.odds[dateOnlyKey2] = { ...oddsData, opponent: opponent };
 
-        console.log(`Stored odds with key: ${key1}`, oddsData);
+        console.log(`Stored odds with keys: ${key1}, ${key2}`, oddsData);
         console.log(`Odds data:`, oddsData);
     });
 }
 
 function getOddsForGame(game) {
     const gameDate = new Date(game.date);
-    const dateStr = gameDate.toDateString();
+    const utcDateStr = gameDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const localDateStr = gameDate.toDateString();
     const opponentName = game.opponent.name.toLowerCase();
 
-    console.log(`Looking for odds: opponent="${opponentName}", date="${dateStr}"`);
+    console.log(`Looking for odds: opponent="${opponentName}", utcDate="${utcDateStr}", localDate="${localDateStr}"`);
     console.log(`Available odds keys:`, Object.keys(state.odds));
 
-    // Try exact match first
-    const exactKey = `${opponentName}_${dateStr}`;
-    if (state.odds[exactKey]) {
-        console.log(`Found exact match: ${exactKey}`);
-        return state.odds[exactKey];
+    // Try exact match with UTC date first
+    const exactKeyUtc = `${opponentName}_${utcDateStr}`;
+    if (state.odds[exactKeyUtc]) {
+        console.log(`Found exact UTC match: ${exactKeyUtc}`);
+        return state.odds[exactKeyUtc];
+    }
+
+    // Try exact match with local date
+    const exactKeyLocal = `${opponentName}_${localDateStr}`;
+    if (state.odds[exactKeyLocal]) {
+        console.log(`Found exact local match: ${exactKeyLocal}`);
+        return state.odds[exactKeyLocal];
     }
 
     // Try matching by partial name (team names differ between ESPN and Odds API)
-    // ESPN: "Ohio State Buckeyes", Odds API: "Ohio State"
+    // ESPN: "Penn State Nittany Lions", Odds API: "Penn State"
     for (const [key, odds] of Object.entries(state.odds)) {
-        if (!key.includes(dateStr)) continue;
+        // Check if the key contains either date format
+        const hasUtcDate = key.includes(utcDateStr);
+        const hasLocalDate = key.includes(localDateStr);
+        if (!hasUtcDate && !hasLocalDate) continue;
         if (key.startsWith('michigan_')) continue; // Skip fallback keys for now
 
-        // Extract the opponent part from the key
-        const keyOpponent = key.replace(`_${dateStr}`, '');
+        // Extract the opponent part from the key (remove both possible date suffixes)
+        let keyOpponent = key;
+        if (hasUtcDate) {
+            keyOpponent = key.replace(`_${utcDateStr}`, '');
+        } else if (hasLocalDate) {
+            keyOpponent = key.replace(`_${localDateStr}`, '');
+        }
 
         // Check various matching patterns
         const opponentWords = opponentName.split(' ').filter(w => w.length > 2);
@@ -437,6 +459,12 @@ function getOddsForGame(game) {
         // Check if key opponent is contained in ESPN opponent name
         if (opponentName.includes(keyOpponent)) {
             console.log(`Found partial match (key in name): ${key}`);
+            return odds;
+        }
+
+        // Check if ESPN opponent name is contained in key opponent
+        if (keyOpponent.includes(opponentName.split(' ')[0])) {
+            console.log(`Found partial match (first word): ${key}`);
             return odds;
         }
 
@@ -457,14 +485,19 @@ function getOddsForGame(game) {
     // Fallback: match by date and sport only
     const sportKey = CONFIG.sports[game.sport]?.oddsKey;
     if (sportKey) {
-        const fallbackKey = `michigan_${sportKey}_${dateStr}`;
-        if (state.odds[fallbackKey]) {
-            console.log(`Using fallback key: ${fallbackKey}`);
-            return state.odds[fallbackKey];
+        const fallbackKeyUtc = `michigan_${sportKey}_${utcDateStr}`;
+        if (state.odds[fallbackKeyUtc]) {
+            console.log(`Using UTC fallback key: ${fallbackKeyUtc}`);
+            return state.odds[fallbackKeyUtc];
+        }
+        const fallbackKeyLocal = `michigan_${sportKey}_${localDateStr}`;
+        if (state.odds[fallbackKeyLocal]) {
+            console.log(`Using local fallback key: ${fallbackKeyLocal}`);
+            return state.odds[fallbackKeyLocal];
         }
     }
 
-    console.log(`No odds found for ${opponentName} on ${dateStr}`);
+    console.log(`No odds found for ${opponentName} on ${utcDateStr} or ${localDateStr}`);
     return null;
 }
 
