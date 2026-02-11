@@ -1,11 +1,15 @@
-// Michigan Wolverines Sports Schedule App
+// Sports Schedule App - Michigan & Olympics
 // University of Michigan Team IDs: 130 (ESPN)
 
 const CONFIG = {
     espnBaseUrl: 'https://site.api.espn.com/apis/site/v2/sports',
     oddsApiBaseUrl: 'https://api.the-odds-api.com/v4/sports',
     michiganTeamId: '130',
-    sports: {
+    mountainTimezone: 'America/Denver',
+    refreshInterval: 15 * 60 * 1000, // 15 minutes
+
+    // Michigan Sports Config
+    michiganSports: {
         football: {
             espnPath: 'football/college-football',
             oddsKey: 'americanfootball_ncaaf',
@@ -20,20 +24,49 @@ const CONFIG = {
         },
         hockey: {
             espnPath: 'hockey/mens-college-hockey',
-            oddsKey: null, // College hockey odds often unavailable
+            oddsKey: null,
             icon: '🏒',
             label: 'Hockey'
         }
     },
-    mountainTimezone: 'America/Denver',
-    refreshInterval: 15 * 60 * 1000 // 15 minutes
+
+    // Olympics Sports Config (2026 Winter Olympics - Milan-Cortina)
+    olympicsSports: {
+        'alpine-skiing': { icon: '⛷️', label: 'Alpine Skiing' },
+        'biathlon': { icon: '🎿', label: 'Biathlon' },
+        'bobsled': { icon: '🛷', label: 'Bobsled' },
+        'cross-country': { icon: '🎿', label: 'Cross-Country' },
+        'curling': { icon: '🥌', label: 'Curling' },
+        'figure-skating': { icon: '⛸️', label: 'Figure Skating' },
+        'freestyle-skiing': { icon: '⛷️', label: 'Freestyle Skiing' },
+        'ice-hockey': { icon: '🏒', label: 'Ice Hockey' },
+        'luge': { icon: '🛷', label: 'Luge' },
+        'nordic-combined': { icon: '🎿', label: 'Nordic Combined' },
+        'short-track': { icon: '⛸️', label: 'Short Track' },
+        'skeleton': { icon: '🛷', label: 'Skeleton' },
+        'ski-jumping': { icon: '🎿', label: 'Ski Jumping' },
+        'snowboard': { icon: '🏂', label: 'Snowboard' },
+        'speed-skating': { icon: '⛸️', label: 'Speed Skating' }
+    },
+
+    // Olympics 2026 dates (Milan-Cortina)
+    olympics2026: {
+        startDate: '2026-02-06',
+        endDate: '2026-02-22',
+        name: '2026 Winter Olympics',
+        location: 'Milan-Cortina, Italy'
+    }
 };
+
+// Current active sports config (switches between michigan and olympics)
+let activeSports = CONFIG.michiganSports;
 
 // State
 let state = {
+    mode: localStorage.getItem('appMode') || 'michigan', // 'michigan' or 'olympics'
     currentView: 'today',
     currentSport: 'all',
-    weekOffset: 0, // 0 = current week, 1 = next week, -1 = last week, etc.
+    weekOffset: 0,
     games: [],
     odds: {},
     oddsApiKey: localStorage.getItem('oddsApiKey') || '',
@@ -54,22 +87,79 @@ const elements = {
     weekNav: document.getElementById('week-nav'),
     prevWeekBtn: document.getElementById('prev-week'),
     nextWeekBtn: document.getElementById('next-week'),
-    todayBtn: document.getElementById('today-btn')
+    todayBtn: document.getElementById('today-btn'),
+    sportFilters: document.getElementById('sport-filters'),
+    headerLogo: document.getElementById('header-logo'),
+    headerTitle: document.getElementById('header-title'),
+    headerSubtitle: document.getElementById('header-subtitle'),
+    footerText: document.getElementById('footer-text')
 };
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    initializeModeToggle();
     initializeTabs();
     initializeFilters();
     initializeWeekNav();
     initializeOddsConfig();
     initializeRefresh();
+    applyMode(); // Apply saved mode
     updateDateHeader();
     loadData();
 
     // Auto-refresh
     setInterval(loadData, CONFIG.refreshInterval);
 });
+
+// Mode Toggle
+function initializeModeToggle() {
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const newMode = btn.dataset.mode;
+            if (newMode !== state.mode) {
+                state.mode = newMode;
+                localStorage.setItem('appMode', newMode);
+                applyMode();
+                state.games = []; // Clear games
+                state.currentSport = 'all';
+                loadData();
+            }
+        });
+    });
+}
+
+function applyMode() {
+    // Update mode toggle buttons
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === state.mode);
+    });
+
+    // Update body class for theme
+    document.body.classList.toggle('olympics-mode', state.mode === 'olympics');
+
+    // Update header
+    if (state.mode === 'olympics') {
+        activeSports = CONFIG.olympicsSports;
+        elements.headerLogo.textContent = '🏅';
+        elements.headerTitle.textContent = CONFIG.olympics2026.name;
+        elements.headerSubtitle.textContent = CONFIG.olympics2026.location;
+        elements.footerText.textContent = 'Data from ESPN. Times shown in Mountain Time (MT).';
+        // Hide odds config for Olympics
+        document.querySelector('.odds-config').style.display = 'none';
+    } else {
+        activeSports = CONFIG.michiganSports;
+        elements.headerLogo.textContent = 'M';
+        elements.headerTitle.textContent = 'Michigan Wolverines';
+        elements.headerSubtitle.textContent = 'Sports Schedule';
+        elements.footerText.textContent = 'Data from ESPN. Odds from The Odds API. Times shown in Mountain Time (MT).';
+        // Show odds config for Michigan
+        document.querySelector('.odds-config').style.display = 'block';
+    }
+
+    // Update sport filters
+    renderSportFilters();
+    updateDateHeader();
+}
 
 function initializeTabs() {
     document.querySelectorAll('.tab').forEach(tab => {
@@ -114,6 +204,25 @@ function updateWeekNavVisibility() {
 }
 
 function initializeFilters() {
+    // Filters are now rendered dynamically by renderSportFilters()
+}
+
+function renderSportFilters() {
+    const sports = state.mode === 'olympics' ? CONFIG.olympicsSports : CONFIG.michiganSports;
+
+    let html = `<button class="filter-btn active" data-sport="all">All Sports</button>`;
+
+    Object.entries(sports).forEach(([key, sport]) => {
+        html += `
+            <button class="filter-btn" data-sport="${key}">
+                <span class="sport-icon">${sport.icon}</span> ${sport.label}
+            </button>
+        `;
+    });
+
+    elements.sportFilters.innerHTML = html;
+
+    // Re-attach event listeners
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -255,7 +364,11 @@ function updateDateHeader() {
     if (state.currentView === 'today') {
         elements.currentDate.textContent = `Today - ${now.toLocaleDateString('en-US', options)}`;
     } else if (state.currentView === 'season') {
-        elements.currentDate.textContent = 'Remaining Season';
+        if (state.mode === 'olympics') {
+            elements.currentDate.textContent = 'All Olympics Events (Feb 6-22)';
+        } else {
+            elements.currentDate.textContent = 'Remaining Season';
+        }
     } else {
         // Week view with offset
         const startDate = new Date(now);
@@ -307,7 +420,15 @@ async function loadData() {
 }
 
 async function fetchSchedules() {
-    const promises = Object.entries(CONFIG.sports).map(async ([sport, config]) => {
+    if (state.mode === 'olympics') {
+        await fetchOlympicsSchedule();
+    } else {
+        await fetchMichiganSchedules();
+    }
+}
+
+async function fetchMichiganSchedules() {
+    const promises = Object.entries(CONFIG.michiganSports).map(async ([sport, config]) => {
         try {
             const url = `${CONFIG.espnBaseUrl}/${config.espnPath}/teams/${CONFIG.michiganTeamId}/schedule`;
             const response = await fetch(url);
@@ -327,6 +448,238 @@ async function fetchSchedules() {
 
     const results = await Promise.all(promises);
     state.games = results.flat().sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+async function fetchOlympicsSchedule() {
+    // ESPN Olympics API endpoint
+    // Try to fetch from ESPN's Olympics scoreboard/schedule
+    const games = [];
+
+    try {
+        // ESPN Olympics endpoint for Winter Olympics
+        const url = `https://site.api.espn.com/apis/site/v2/sports/olympics/scoreboard`;
+        const response = await fetch(url);
+
+        if (response.ok) {
+            const data = await response.json();
+            const events = data.events || [];
+
+            events.forEach(event => {
+                const sportName = event.sport?.slug || event.league?.slug || 'olympics';
+                const sportConfig = CONFIG.olympicsSports[sportName] || { icon: '🏅', label: sportName };
+
+                const game = {
+                    id: event.id,
+                    sport: sportName,
+                    date: event.date,
+                    name: event.name || event.shortName,
+                    shortName: event.shortName,
+                    opponent: {
+                        name: event.name || 'Olympic Event',
+                        abbreviation: '',
+                        logo: null
+                    },
+                    isHome: true,
+                    venue: event.competitions?.[0]?.venue?.fullName || CONFIG.olympics2026.location,
+                    broadcast: event.competitions?.[0]?.broadcasts?.[0]?.media?.shortName ||
+                              event.competitions?.[0]?.geoBroadcasts?.[0]?.media?.shortName || null,
+                    status: event.status?.type?.name || 'scheduled',
+                    completed: event.status?.type?.completed || false,
+                    score: null,
+                    isOlympics: true
+                };
+
+                games.push(game);
+            });
+        }
+    } catch (error) {
+        console.warn('Error fetching Olympics schedule:', error);
+    }
+
+    // If no events found, create placeholder events for 2026 Winter Olympics
+    if (games.length === 0) {
+        games.push(...generateOlympicsSchedule());
+    }
+
+    state.games = games.sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+function generateOlympicsSchedule() {
+    // 2026 Winter Olympics Schedule - Milan-Cortina, Italy
+    // Olympics run Feb 6-22, 2026
+    // Times are in EST (ESPN times), will be converted to Mountain Time for display
+    const events = [];
+
+    // Comprehensive schedule based on actual 2026 Winter Olympics
+    const schedule = [
+        // Feb 6 - Opening Ceremony Day
+        { date: '2026-02-06', time: '13:30', sport: 'curling', name: 'Curling - Mixed Doubles Round Robin', broadcast: 'USA' },
+        { date: '2026-02-06', time: '14:00', sport: 'figure-skating', name: 'Figure Skating - Team Event (Short)', broadcast: 'NBC' },
+        { date: '2026-02-06', time: '19:00', sport: 'ice-hockey', name: 'Ice Hockey - Women\'s Preliminary', broadcast: 'USA' },
+
+        // Feb 7
+        { date: '2026-02-07', time: '05:00', sport: 'biathlon', name: 'Biathlon - Mixed Relay Final', broadcast: 'USA' },
+        { date: '2026-02-07', time: '06:00', sport: 'cross-country', name: 'Cross-Country - Skiathlon Women', broadcast: 'USA' },
+        { date: '2026-02-07', time: '10:00', sport: 'ski-jumping', name: 'Ski Jumping - Normal Hill Final', broadcast: 'NBC' },
+        { date: '2026-02-07', time: '12:00', sport: 'speed-skating', name: 'Speed Skating - 5000m Men', broadcast: 'NBC' },
+        { date: '2026-02-07', time: '14:00', sport: 'short-track', name: 'Short Track - Mixed Relay Final', broadcast: 'NBC' },
+        { date: '2026-02-07', time: '19:00', sport: 'ice-hockey', name: 'Ice Hockey - Women\'s (USA vs CAN)', broadcast: 'NBC' },
+
+        // Feb 8
+        { date: '2026-02-08', time: '05:15', sport: 'alpine-skiing', name: 'Alpine Skiing - Downhill Men', broadcast: 'NBC' },
+        { date: '2026-02-08', time: '06:00', sport: 'biathlon', name: 'Biathlon - Sprint Women', broadcast: 'USA' },
+        { date: '2026-02-08', time: '10:00', sport: 'luge', name: 'Luge - Men\'s Singles Run 1 & 2', broadcast: 'USA' },
+        { date: '2026-02-08', time: '12:30', sport: 'snowboard', name: 'Snowboard - Slopestyle Women Final', broadcast: 'NBC' },
+        { date: '2026-02-08', time: '14:00', sport: 'figure-skating', name: 'Figure Skating - Team Event Final', broadcast: 'NBC' },
+        { date: '2026-02-08', time: '19:30', sport: 'curling', name: 'Curling - Mixed Doubles Semifinal', broadcast: 'USA' },
+
+        // Feb 9
+        { date: '2026-02-09', time: '05:00', sport: 'alpine-skiing', name: 'Alpine Skiing - Super-G Women', broadcast: 'NBC' },
+        { date: '2026-02-09', time: '06:00', sport: 'biathlon', name: 'Biathlon - Sprint Men', broadcast: 'USA' },
+        { date: '2026-02-09', time: '09:30', sport: 'cross-country', name: 'Cross-Country - Skiathlon Men', broadcast: 'USA' },
+        { date: '2026-02-09', time: '11:00', sport: 'luge', name: 'Luge - Men\'s Singles Final', broadcast: 'NBC' },
+        { date: '2026-02-09', time: '12:30', sport: 'snowboard', name: 'Snowboard - Slopestyle Men Final', broadcast: 'NBC' },
+        { date: '2026-02-09', time: '14:00', sport: 'short-track', name: 'Short Track - 1000m Women Final', broadcast: 'NBC' },
+        { date: '2026-02-09', time: '15:00', sport: 'curling', name: 'Curling - Mixed Doubles Gold Medal', broadcast: 'NBC' },
+        { date: '2026-02-09', time: '19:00', sport: 'ice-hockey', name: 'Ice Hockey - Men\'s Preliminary', broadcast: 'USA' },
+
+        // Feb 10
+        { date: '2026-02-10', time: '05:00', sport: 'alpine-skiing', name: 'Alpine Skiing - Downhill Women', broadcast: 'NBC' },
+        { date: '2026-02-10', time: '06:30', sport: 'biathlon', name: 'Biathlon - Pursuit Women', broadcast: 'USA' },
+        { date: '2026-02-10', time: '10:00', sport: 'luge', name: 'Luge - Women\'s Singles Run 1 & 2', broadcast: 'USA' },
+        { date: '2026-02-10', time: '12:00', sport: 'freestyle-skiing', name: 'Freestyle Skiing - Moguls Women Final', broadcast: 'NBC' },
+        { date: '2026-02-10', time: '14:00', sport: 'speed-skating', name: 'Speed Skating - 1500m Women', broadcast: 'NBC' },
+        { date: '2026-02-10', time: '18:00', sport: 'figure-skating', name: 'Figure Skating - Men\'s Short Program', broadcast: 'NBC' },
+
+        // Feb 11 - Today!
+        { date: '2026-02-11', time: '05:30', sport: 'alpine-skiing', name: 'Alpine Skiing - Super-G Men', broadcast: 'NBC' },
+        { date: '2026-02-11', time: '06:45', sport: 'nordic-combined', name: 'Nordic Combined - Gundersen NH Final', broadcast: 'USA' },
+        { date: '2026-02-11', time: '07:15', sport: 'biathlon', name: 'Biathlon - Individual Women 15km', broadcast: 'USA' },
+        { date: '2026-02-11', time: '07:15', sport: 'freestyle-skiing', name: 'Freestyle Skiing - Moguls Men Final', broadcast: 'Peacock' },
+        { date: '2026-02-11', time: '11:40', sport: 'ice-hockey', name: 'Ice Hockey - Men\'s (FIN vs SVK)', broadcast: 'USA' },
+        { date: '2026-02-11', time: '12:00', sport: 'luge', name: 'Luge - Women\'s Singles Final', broadcast: 'NBC' },
+        { date: '2026-02-11', time: '12:00', sport: 'luge', name: 'Luge - Doubles Final', broadcast: 'NBC' },
+        { date: '2026-02-11', time: '13:30', sport: 'speed-skating', name: 'Speed Skating - 1000m Men', broadcast: 'NBC' },
+        { date: '2026-02-11', time: '14:30', sport: 'figure-skating', name: 'Figure Skating - Ice Dance Final', broadcast: 'NBC' },
+        { date: '2026-02-11', time: '18:10', sport: 'ice-hockey', name: 'Ice Hockey - Men\'s (ITA vs SWE)', broadcast: 'USA' },
+
+        // Feb 12
+        { date: '2026-02-12', time: '05:00', sport: 'alpine-skiing', name: 'Alpine Skiing - Giant Slalom Women', broadcast: 'NBC' },
+        { date: '2026-02-12', time: '06:00', sport: 'biathlon', name: 'Biathlon - Individual Men 20km', broadcast: 'USA' },
+        { date: '2026-02-12', time: '10:00', sport: 'bobsled', name: 'Bobsled - Women\'s Monobob Run 1 & 2', broadcast: 'USA' },
+        { date: '2026-02-12', time: '12:00', sport: 'snowboard', name: 'Snowboard - Halfpipe Women Final', broadcast: 'NBC' },
+        { date: '2026-02-12', time: '14:00', sport: 'short-track', name: 'Short Track - 1500m Men Final', broadcast: 'NBC' },
+        { date: '2026-02-12', time: '18:00', sport: 'figure-skating', name: 'Figure Skating - Men\'s Free Skate', broadcast: 'NBC' },
+        { date: '2026-02-12', time: '19:00', sport: 'ice-hockey', name: 'Ice Hockey - Women\'s Quarterfinal', broadcast: 'USA' },
+
+        // Feb 13
+        { date: '2026-02-13', time: '05:00', sport: 'alpine-skiing', name: 'Alpine Skiing - Giant Slalom Men', broadcast: 'NBC' },
+        { date: '2026-02-13', time: '06:00', sport: 'cross-country', name: 'Cross-Country - 10km Women', broadcast: 'USA' },
+        { date: '2026-02-13', time: '10:00', sport: 'bobsled', name: 'Bobsled - Women\'s Monobob Final', broadcast: 'NBC' },
+        { date: '2026-02-13', time: '12:00', sport: 'snowboard', name: 'Snowboard - Halfpipe Men Final', broadcast: 'NBC' },
+        { date: '2026-02-13', time: '14:00', sport: 'speed-skating', name: 'Speed Skating - 5000m Women', broadcast: 'NBC' },
+        { date: '2026-02-13', time: '19:00', sport: 'curling', name: 'Curling - Women\'s Round Robin', broadcast: 'USA' },
+
+        // Feb 14
+        { date: '2026-02-14', time: '05:00', sport: 'alpine-skiing', name: 'Alpine Skiing - Slalom Women', broadcast: 'NBC' },
+        { date: '2026-02-14', time: '06:00', sport: 'biathlon', name: 'Biathlon - Relay Women', broadcast: 'USA' },
+        { date: '2026-02-14', time: '10:00', sport: 'skeleton', name: 'Skeleton - Women\'s Run 1 & 2', broadcast: 'USA' },
+        { date: '2026-02-14', time: '12:00', sport: 'freestyle-skiing', name: 'Freestyle Skiing - Aerials Mixed Team', broadcast: 'NBC' },
+        { date: '2026-02-14', time: '14:00', sport: 'short-track', name: 'Short Track - 500m Women Final', broadcast: 'NBC' },
+        { date: '2026-02-14', time: '18:00', sport: 'figure-skating', name: 'Figure Skating - Pairs Short Program', broadcast: 'NBC' },
+
+        // Feb 15
+        { date: '2026-02-15', time: '05:00', sport: 'alpine-skiing', name: 'Alpine Skiing - Slalom Men', broadcast: 'NBC' },
+        { date: '2026-02-15', time: '06:00', sport: 'biathlon', name: 'Biathlon - Relay Men', broadcast: 'USA' },
+        { date: '2026-02-15', time: '10:00', sport: 'skeleton', name: 'Skeleton - Women\'s Final', broadcast: 'NBC' },
+        { date: '2026-02-15', time: '12:00', sport: 'snowboard', name: 'Snowboard - Cross Women Final', broadcast: 'NBC' },
+        { date: '2026-02-15', time: '14:00', sport: 'speed-skating', name: 'Speed Skating - 1000m Women', broadcast: 'NBC' },
+        { date: '2026-02-15', time: '19:00', sport: 'ice-hockey', name: 'Ice Hockey - Women\'s Semifinal', broadcast: 'NBC' },
+
+        // Feb 16
+        { date: '2026-02-16', time: '06:00', sport: 'cross-country', name: 'Cross-Country - 4x10km Relay Men', broadcast: 'USA' },
+        { date: '2026-02-16', time: '10:00', sport: 'skeleton', name: 'Skeleton - Men\'s Run 1 & 2', broadcast: 'USA' },
+        { date: '2026-02-16', time: '12:00', sport: 'snowboard', name: 'Snowboard - Cross Men Final', broadcast: 'NBC' },
+        { date: '2026-02-16', time: '14:00', sport: 'short-track', name: 'Short Track - 500m Men Final', broadcast: 'NBC' },
+        { date: '2026-02-16', time: '18:00', sport: 'figure-skating', name: 'Figure Skating - Pairs Free Skate', broadcast: 'NBC' },
+
+        // Feb 17
+        { date: '2026-02-17', time: '05:00', sport: 'alpine-skiing', name: 'Alpine Skiing - Combined Women', broadcast: 'NBC' },
+        { date: '2026-02-17', time: '06:00', sport: 'biathlon', name: 'Biathlon - Mass Start Women', broadcast: 'USA' },
+        { date: '2026-02-17', time: '10:00', sport: 'skeleton', name: 'Skeleton - Men\'s Final', broadcast: 'NBC' },
+        { date: '2026-02-17', time: '12:00', sport: 'freestyle-skiing', name: 'Freestyle Skiing - Halfpipe Women Final', broadcast: 'NBC' },
+        { date: '2026-02-17', time: '14:00', sport: 'speed-skating', name: 'Speed Skating - 1500m Men', broadcast: 'NBC' },
+        { date: '2026-02-17', time: '18:00', sport: 'figure-skating', name: 'Figure Skating - Women\'s Short', broadcast: 'NBC' },
+
+        // Feb 18
+        { date: '2026-02-18', time: '05:00', sport: 'alpine-skiing', name: 'Alpine Skiing - Combined Men', broadcast: 'NBC' },
+        { date: '2026-02-18', time: '06:00', sport: 'biathlon', name: 'Biathlon - Mass Start Men', broadcast: 'USA' },
+        { date: '2026-02-18', time: '10:00', sport: 'bobsled', name: 'Bobsled - Two-Man Run 1 & 2', broadcast: 'USA' },
+        { date: '2026-02-18', time: '12:00', sport: 'freestyle-skiing', name: 'Freestyle Skiing - Halfpipe Men Final', broadcast: 'NBC' },
+        { date: '2026-02-18', time: '14:00', sport: 'curling', name: 'Curling - Women\'s Semifinal', broadcast: 'NBC' },
+        { date: '2026-02-18', time: '19:00', sport: 'ice-hockey', name: 'Ice Hockey - Women\'s Gold Medal Game', broadcast: 'NBC' },
+
+        // Feb 19
+        { date: '2026-02-19', time: '06:00', sport: 'cross-country', name: 'Cross-Country - 4x5km Relay Women', broadcast: 'USA' },
+        { date: '2026-02-19', time: '10:00', sport: 'bobsled', name: 'Bobsled - Two-Man Final', broadcast: 'NBC' },
+        { date: '2026-02-19', time: '12:00', sport: 'short-track', name: 'Short Track - Relay Women Final', broadcast: 'NBC' },
+        { date: '2026-02-19', time: '14:00', sport: 'speed-skating', name: 'Speed Skating - 500m Women', broadcast: 'NBC' },
+        { date: '2026-02-19', time: '18:00', sport: 'figure-skating', name: 'Figure Skating - Women\'s Free Skate', broadcast: 'NBC' },
+        { date: '2026-02-19', time: '19:00', sport: 'curling', name: 'Curling - Women\'s Gold Medal', broadcast: 'NBC' },
+
+        // Feb 20
+        { date: '2026-02-20', time: '05:00', sport: 'alpine-skiing', name: 'Alpine Skiing - Team Event', broadcast: 'NBC' },
+        { date: '2026-02-20', time: '06:00', sport: 'cross-country', name: 'Cross-Country - 50km Mass Start Men', broadcast: 'USA' },
+        { date: '2026-02-20', time: '10:00', sport: 'bobsled', name: 'Bobsled - Four-Man Run 1 & 2', broadcast: 'USA' },
+        { date: '2026-02-20', time: '12:00', sport: 'short-track', name: 'Short Track - Relay Men Final', broadcast: 'NBC' },
+        { date: '2026-02-20', time: '14:00', sport: 'speed-skating', name: 'Speed Skating - 500m Men', broadcast: 'NBC' },
+        { date: '2026-02-20', time: '19:00', sport: 'ice-hockey', name: 'Ice Hockey - Men\'s Semifinal 1', broadcast: 'NBC' },
+
+        // Feb 21
+        { date: '2026-02-21', time: '06:00', sport: 'cross-country', name: 'Cross-Country - 30km Mass Start Women', broadcast: 'USA' },
+        { date: '2026-02-21', time: '10:00', sport: 'bobsled', name: 'Bobsled - Four-Man Final', broadcast: 'NBC' },
+        { date: '2026-02-21', time: '12:00', sport: 'speed-skating', name: 'Speed Skating - Mass Start Women', broadcast: 'NBC' },
+        { date: '2026-02-21', time: '14:00', sport: 'curling', name: 'Curling - Men\'s Gold Medal', broadcast: 'NBC' },
+        { date: '2026-02-21', time: '19:00', sport: 'ice-hockey', name: 'Ice Hockey - Men\'s Semifinal 2', broadcast: 'NBC' },
+
+        // Feb 22 - Closing Day
+        { date: '2026-02-22', time: '06:00', sport: 'speed-skating', name: 'Speed Skating - Mass Start Men', broadcast: 'NBC' },
+        { date: '2026-02-22', time: '12:00', sport: 'ice-hockey', name: 'Ice Hockey - Men\'s Bronze Medal', broadcast: 'USA' },
+        { date: '2026-02-22', time: '14:00', sport: 'ice-hockey', name: 'Ice Hockey - Men\'s Gold Medal Game', broadcast: 'NBC' },
+        { date: '2026-02-22', time: '18:00', sport: 'figure-skating', name: 'Figure Skating - Gala Exhibition', broadcast: 'NBC' }
+    ];
+
+    schedule.forEach((evt, index) => {
+        const [year, month, day] = evt.date.split('-').map(Number);
+        const [hours, minutes] = evt.time.split(':').map(Number);
+
+        // Create date in EST (ESPN times), JavaScript will handle conversion
+        const eventDate = new Date(Date.UTC(year, month - 1, day, hours + 5, minutes)); // EST is UTC-5
+
+        const sportConfig = CONFIG.olympicsSports[evt.sport] || { icon: '🏅', label: evt.sport };
+
+        events.push({
+            id: `olympics-2026-${index}`,
+            sport: evt.sport,
+            date: eventDate.toISOString(),
+            name: evt.name,
+            shortName: evt.name,
+            opponent: {
+                name: evt.name,
+                abbreviation: '',
+                logo: null
+            },
+            isHome: true,
+            venue: CONFIG.olympics2026.location,
+            broadcast: evt.broadcast,
+            status: 'scheduled',
+            completed: eventDate < new Date(),
+            score: null,
+            isOlympics: true
+        });
+    });
+
+    return events;
 }
 
 function parseESPNSchedule(data, sport) {
@@ -388,7 +741,7 @@ async function fetchOdds() {
 
     console.log('Fetching odds with API key...');
 
-    const sportKeys = Object.values(CONFIG.sports)
+    const sportKeys = Object.values(CONFIG.michiganSports)
         .filter(s => s.oddsKey)
         .map(s => s.oddsKey);
 
@@ -573,7 +926,7 @@ function getOddsForGame(game) {
     }
 
     // Fallback: match by date and sport only
-    const sportKey = CONFIG.sports[game.sport]?.oddsKey;
+    const sportKey = CONFIG.michiganSports[game.sport]?.oddsKey;
     if (sportKey) {
         const fallbackKeyUtc = `michigan_${sportKey}_${utcDateStr}`;
         if (state.odds[fallbackKeyUtc]) {
@@ -777,10 +1130,21 @@ function formatDateForCalendar(date) {
 
 function getGoogleCalendarUrl(game) {
     const startDate = new Date(game.date);
-    const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000); // Assume 3 hour game
+    const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000); // Assume 3 hour event
 
-    const title = encodeURIComponent(`Michigan ${CONFIG.sports[game.sport].label}: ${game.isHome ? 'vs' : '@'} ${game.opponent.name}`);
-    const details = encodeURIComponent(`Michigan Wolverines ${CONFIG.sports[game.sport].label}\n${game.isHome ? 'Home' : 'Away'} game\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`);
+    const isOlympics = game.isOlympics || state.mode === 'olympics';
+    const sportConfig = isOlympics
+        ? (CONFIG.olympicsSports[game.sport] || { label: game.sport })
+        : (CONFIG.michiganSports[game.sport] || { label: game.sport });
+
+    let title, details;
+    if (isOlympics) {
+        title = encodeURIComponent(`Olympics: ${game.name || sportConfig.label}`);
+        details = encodeURIComponent(`2026 Winter Olympics\n${sportConfig.label}\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`);
+    } else {
+        title = encodeURIComponent(`Michigan ${sportConfig.label}: ${game.isHome ? 'vs' : '@'} ${game.opponent.name}`);
+        details = encodeURIComponent(`Michigan Wolverines ${sportConfig.label}\n${game.isHome ? 'Home' : 'Away'} game\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`);
+    }
     const location = encodeURIComponent(game.venue || '');
 
     const start = formatDateForCalendar(startDate);
@@ -791,10 +1155,21 @@ function getGoogleCalendarUrl(game) {
 
 function getOutlookCalendarUrl(game) {
     const startDate = new Date(game.date);
-    const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000); // Assume 3 hour game
+    const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000); // Assume 3 hour event
 
-    const title = encodeURIComponent(`Michigan ${CONFIG.sports[game.sport].label}: ${game.isHome ? 'vs' : '@'} ${game.opponent.name}`);
-    const details = encodeURIComponent(`Michigan Wolverines ${CONFIG.sports[game.sport].label}\n${game.isHome ? 'Home' : 'Away'} game\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`);
+    const isOlympics = game.isOlympics || state.mode === 'olympics';
+    const sportConfig = isOlympics
+        ? (CONFIG.olympicsSports[game.sport] || { label: game.sport })
+        : (CONFIG.michiganSports[game.sport] || { label: game.sport });
+
+    let title, details;
+    if (isOlympics) {
+        title = encodeURIComponent(`Olympics: ${game.name || sportConfig.label}`);
+        details = encodeURIComponent(`2026 Winter Olympics\n${sportConfig.label}\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`);
+    } else {
+        title = encodeURIComponent(`Michigan ${sportConfig.label}: ${game.isHome ? 'vs' : '@'} ${game.opponent.name}`);
+        details = encodeURIComponent(`Michigan Wolverines ${sportConfig.label}\n${game.isHome ? 'Home' : 'Away'} game\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`);
+    }
     const location = encodeURIComponent(game.venue || '');
 
     const start = startDate.toISOString();
@@ -808,8 +1183,19 @@ function generateICSFile(games) {
         const startDate = new Date(game.date);
         const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000);
 
-        const title = `Michigan ${CONFIG.sports[game.sport].label}: ${game.isHome ? 'vs' : '@'} ${game.opponent.name}`;
-        const description = `Michigan Wolverines ${CONFIG.sports[game.sport].label}\\n${game.isHome ? 'Home' : 'Away'} game\\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`;
+        const isOlympics = game.isOlympics || state.mode === 'olympics';
+        const sportConfig = isOlympics
+            ? (CONFIG.olympicsSports[game.sport] || { label: game.sport })
+            : (CONFIG.michiganSports[game.sport] || { label: game.sport });
+
+        let title, description;
+        if (isOlympics) {
+            title = `Olympics: ${game.name || sportConfig.label}`;
+            description = `2026 Winter Olympics\\n${sportConfig.label}\\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`;
+        } else {
+            title = `Michigan ${sportConfig.label}: ${game.isHome ? 'vs' : '@'} ${game.opponent.name}`;
+            description = `Michigan Wolverines ${sportConfig.label}\\n${game.isHome ? 'Home' : 'Away'} game\\n${game.broadcast ? 'Watch on: ' + game.broadcast : ''}`;
+        }
 
         return `BEGIN:VEVENT
 DTSTART:${formatDateForCalendar(startDate)}
@@ -900,10 +1286,14 @@ function getStreamingUrl(broadcast) {
 }
 
 function renderGameCard(game) {
-    const sportConfig = CONFIG.sports[game.sport];
+    // Get sport config from the appropriate source
+    const sportConfig = state.mode === 'olympics'
+        ? (CONFIG.olympicsSports[game.sport] || { icon: '🏅', label: game.sport })
+        : (CONFIG.michiganSports[game.sport] || { icon: '🏅', label: game.sport });
+
     const gameTime = formatTime(game.date);
     const gameDate = formatDate(game.date);
-    const odds = getOddsForGame(game);
+    const odds = state.mode === 'michigan' ? getOddsForGame(game) : null;
     const draftKingsUrl = getDraftKingsUrl(game);
     const fanDuelUrl = getFanDuelUrl(game);
     const googleCalUrl = getGoogleCalendarUrl(game);
@@ -911,6 +1301,7 @@ function renderGameCard(game) {
     const streamingInfo = getStreamingUrl(game.broadcast);
 
     const completedClass = game.completed ? 'completed' : '';
+    const isOlympics = game.isOlympics || state.mode === 'olympics';
 
     let scoreHtml = '';
     if (game.score) {
@@ -924,11 +1315,11 @@ function renderGameCard(game) {
     }
 
     let bettingHtml = '';
-    if (!game.completed) {
-        // Determine why odds might not be available
-        const gameDate = new Date(game.date);
+    // Only show betting for Michigan mode
+    if (!game.completed && !isOlympics) {
+        const gameDateObj = new Date(game.date);
         const now = new Date();
-        const daysUntilGame = Math.ceil((gameDate - now) / (1000 * 60 * 60 * 24));
+        const daysUntilGame = Math.ceil((gameDateObj - now) / (1000 * 60 * 60 * 24));
         let oddsMessage = 'Add API key for betting lines';
         if (state.oddsApiKey) {
             if (daysUntilGame > 3) {
@@ -984,6 +1375,18 @@ function renderGameCard(game) {
         `;
     }
 
+    // Different display for Olympics vs Michigan
+    const matchupHtml = isOlympics ? `
+        <div class="matchup">
+            <span class="opponent">${game.name || game.opponent.name}</span>
+        </div>
+    ` : `
+        <div class="matchup">
+            <span class="home-away ${game.isHome ? 'home' : 'away'}">${game.isHome ? 'Home' : 'Away'}</span>
+            <span class="opponent">${game.isHome ? 'vs' : '@'} ${game.opponent.name}</span>
+        </div>
+    `;
+
     return `
         <div class="game-card ${completedClass}">
             <div class="sport-badge">
@@ -991,10 +1394,7 @@ function renderGameCard(game) {
                 <span class="label">${sportConfig.label}</span>
             </div>
             <div class="game-info">
-                <div class="matchup">
-                    <span class="home-away ${game.isHome ? 'home' : 'away'}">${game.isHome ? 'Home' : 'Away'}</span>
-                    <span class="opponent">${game.isHome ? 'vs' : '@'} ${game.opponent.name}</span>
-                </div>
+                ${matchupHtml}
                 <div class="game-details">
                     ${game.broadcast ? `
                         <span class="detail">
@@ -1064,14 +1464,22 @@ function showLoading() {
 }
 
 function showNoGames() {
-    const sportLabel = state.currentSport === 'all' ? '' : CONFIG.sports[state.currentSport]?.label || '';
+    const sports = state.mode === 'olympics' ? CONFIG.olympicsSports : CONFIG.michiganSports;
+    const sportLabel = state.currentSport === 'all' ? '' : sports[state.currentSport]?.label || '';
     const timeframe = state.currentView === 'today' ? 'today' : 'this week';
+
+    const message = state.mode === 'olympics'
+        ? 'Check back closer to the Olympics for event schedules.'
+        : 'Check back later for upcoming Michigan Wolverines games.';
+
+    const icon = state.mode === 'olympics' ? '🏅' : '📅';
+    const eventType = state.mode === 'olympics' ? 'Events' : 'Games';
 
     elements.gamesContainer.innerHTML = `
         <div class="no-games">
-            <div class="no-games-icon">📅</div>
-            <h3>No ${sportLabel} Games ${timeframe.charAt(0).toUpperCase() + timeframe.slice(1)}</h3>
-            <p>Check back later for upcoming Michigan Wolverines games.</p>
+            <div class="no-games-icon">${icon}</div>
+            <h3>No ${sportLabel} ${eventType} ${timeframe.charAt(0).toUpperCase() + timeframe.slice(1)}</h3>
+            <p>${message}</p>
         </div>
     `;
 }

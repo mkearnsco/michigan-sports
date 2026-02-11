@@ -1,5 +1,9 @@
-/* Michigan Colors */
+/* Michigan Colors (Default) */
 :root {
+    --primary: #FFCB05;
+    --secondary: #00274C;
+    --secondary-light: #1c4a7c;
+    --secondary-dark: #001a33;
     --maize: #FFCB05;
     --blue: #00274C;
     --light-blue: #1c4a7c;
@@ -12,6 +16,140 @@
     --gray-700: #495057;
     --success: #28a745;
     --danger: #dc3545;
+}
+
+/* Olympics Theme */
+body.olympics-mode {
+    --primary: #c41e3a;
+    --secondary: #002868;
+    --secondary-light: #1a4080;
+    --secondary-dark: #001540;
+    --maize: #c41e3a;
+    --blue: #002868;
+    --light-blue: #1a4080;
+    --dark-blue: #001540;
+    background: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-dark) 100%);
+}
+
+/* Mode Toggle */
+.mode-toggle {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+}
+
+.mode-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: transparent;
+    border: 2px solid var(--light-blue);
+    color: var(--gray-300);
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mode-btn:hover {
+    border-color: var(--maize);
+    color: var(--maize);
+}
+
+.mode-btn.active {
+    background: var(--maize);
+    border-color: var(--maize);
+    color: var(--blue);
+}
+
+.mode-icon {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+/* Olympics-specific logo */
+body.olympics-mode .michigan-logo {
+    background: linear-gradient(135deg, #c41e3a 0%, #002868 50%, #fff 100%);
+    color: #fff;
+    font-size: 28px;
+}
+
+body.olympics-mode .header-text h1 {
+    color: #fff;
+}
+
+body.olympics-mode header {
+    border-bottom-color: #c41e3a;
+}
+
+body.olympics-mode .tab.active,
+body.olympics-mode .filter-btn.active {
+    background: linear-gradient(135deg, #c41e3a 0%, #bf0d3d 100%);
+    border-color: #c41e3a;
+    color: #fff;
+}
+
+body.olympics-mode .refresh-btn {
+    background: #c41e3a;
+    color: #fff;
+}
+
+body.olympics-mode .day-header,
+body.olympics-mode .month-header {
+    color: #fff;
+    border-color: #c41e3a;
+}
+
+body.olympics-mode .month-header {
+    border-left-color: #c41e3a;
+}
+
+body.olympics-mode .home-away.home {
+    background: #c41e3a;
+    color: #fff;
+}
+
+body.olympics-mode .tv-channel {
+    background: rgba(196, 30, 58, 0.15);
+    color: #ff6b6b;
+}
+
+body.olympics-mode .odds-item .value {
+    color: #ff6b6b;
+}
+
+body.olympics-mode .add-all-btn {
+    background: linear-gradient(135deg, #c41e3a 0%, #9a1830 100%);
+    color: #fff;
+}
+
+body.olympics-mode .save-key-btn {
+    background: #c41e3a;
+    color: #fff;
+}
+
+body.olympics-mode .week-nav-btn:hover,
+body.olympics-mode .filter-btn:hover,
+body.olympics-mode .odds-toggle-btn:hover {
+    border-color: #c41e3a;
+    color: #ff6b6b;
+}
+
+body.olympics-mode .today-btn:hover {
+    background: #c41e3a;
+    border-color: #c41e3a;
+    color: #fff;
+}
+
+/* Olympics rings decoration */
+body.olympics-mode .mode-btn[data-mode="olympics"].active .mode-icon::before {
+    content: '';
 }
 
 * {
