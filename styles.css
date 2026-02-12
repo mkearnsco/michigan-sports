@@ -55,6 +55,12 @@ body.olympics-mode {
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
+    /* iOS Safari touch fixes */
+    -webkit-tap-highlight-color: rgba(255, 203, 5, 0.3);
+    touch-action: manipulation;
+    -webkit-appearance: none;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .mode-btn:hover {

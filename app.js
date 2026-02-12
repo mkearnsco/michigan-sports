@@ -114,7 +114,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // Mode Toggle
 function initializeModeToggle() {
     document.querySelectorAll('.mode-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
+        let lastTouchTime = 0;
+
+        const handleModeChange = () => {
             const newMode = btn.dataset.mode;
             if (newMode !== state.mode) {
                 state.mode = newMode;
@@ -123,6 +125,21 @@ function initializeModeToggle() {
                 state.games = []; // Clear games
                 state.currentSport = 'all';
                 loadData();
+            }
+        };
+
+        // Handle touch for iOS Safari
+        btn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            lastTouchTime = Date.now();
+            handleModeChange();
+        });
+
+        // Handle click for non-touch devices (with debounce to prevent double-firing)
+        btn.addEventListener('click', () => {
+            // Ignore click if it came right after a touch event
+            if (Date.now() - lastTouchTime > 500) {
+                handleModeChange();
             }
         });
     });
